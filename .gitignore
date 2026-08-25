@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# data is never committed
+data/
+*.hea
+*.dat
+*.npy
+*.npz
+
+# large artefacts
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+wandb/
+
+# results: keep the tables, not the raw dumps
+results/**/raw/
