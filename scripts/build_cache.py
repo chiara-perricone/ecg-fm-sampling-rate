@@ -198,6 +198,7 @@ def check_cache(cache: D.SignalCache, meta: pd.DataFrame, rep: Report) -> None:
 
     n_nan = n_flat = 0
     amp_min, amp_max = np.inf, -np.inf
+    peak = np.empty(arr.shape[0], dtype=np.float32)
     block = 512
     for start in range(0, arr.shape[0], block):
         chunk = np.asarray(arr[start : start + block])
@@ -206,11 +207,26 @@ def check_cache(cache: D.SignalCache, meta: pd.DataFrame, rep: Report) -> None:
         n_flat += int((spread == 0).all(axis=-1).sum())
         amp_min = min(amp_min, float(np.nanmin(chunk)))
         amp_max = max(amp_max, float(np.nanmax(chunk)))
+        peak[start : start + chunk.shape[0]] = np.abs(chunk).max(axis=(1, 2))
 
     rep.check(n_nan == 0, "nessun NaN/Inf nella cache", f"{n_nan} valori")
     rep.check(n_flat == 0, "nessun record piatto su tutte le derivazioni",
               f"{n_flat} record")
     rep.info("ampiezza (mV)", f"min {amp_min:.3f}, max {amp_max:.3f}")
+
+    # Conteggi per soglia: PROTOCOL.md §10 voce 7 cita queste cifre, quindi
+    # devono essere riproducibili da chiunque cloni il repo.
+    over = " | ".join(
+        f">{t} mV: {int((peak > t).sum())} ({(peak > t).mean() * 100:.2f}%)"
+        for t in (5, 10, 20, 30)
+    )
+    rep.info("record oltre soglia", over)
+    rep.info("ampiezza di picco per record (mV)",
+             f"mediana {float(np.median(peak)):.2f}, "
+             f"p99 {float(np.percentile(peak, 99)):.2f}")
+    top = np.argsort(peak)[-6:][::-1]
+    rep.info("sei record con picco maggiore",
+             ", ".join(f"{meta.index[i]}: {peak[i]:.1f}" for i in top))
     if amp_max > 20 or amp_min < -20:
         rep.warn("ampiezze fuori dal range fisiologico tipico",
                  "possibile problema di unita' o di gain")
