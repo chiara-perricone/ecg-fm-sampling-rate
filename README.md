@@ -7,9 +7,9 @@ rate at which the signal is read.
 
 Al-Masud, Lopez Alcaraz and Strodthoff (ICLR 2026, [arXiv:2509.25095](https://arxiv.org/abs/2509.25095))
 benchmark eight ECG foundation models across 12 datasets and 26 clinical tasks.
-It is the most careful evaluation of these models to date: bootstrap confidence
+Their evaluation is statistically careful: bootstrap confidence
 intervals on the test set, pairwise comparisons by bootstrapping differences,
-rankings that assign ties where intervals overlap. Their headline finding is
+rankings that assign ties where intervals overlap. Their main finding is
 that architecture matters more than scale.
 
 Their methods section states that all models use the standard 12 leads
@@ -56,13 +56,13 @@ trained. The literature review that produced this design is in
 
 ## Why this exists
 
-I have spent recent years in consulting, leading applied ML delivery rather than
-doing research full-time. My hands-on level is fine-tuning and evaluation design,
-not architecture design — I would rather demonstrate that than assert it. I
-started this while preparing an application for a research position, on the view
-that a gap is better closed by doing the work than by describing it. The question
-it asks is one I would want answered regardless, and of the domains I could have
-picked, cardiology is the one closest to home.
+My background is in time series, which is why one sentence in the paper's methods section caught my eye: the frequency at which a signal is read is not a neutral preprocessing step.
+
+Since then I have worked in consulting — delivery, across a much wider range of domains and problems than I started in, which meant learning new techniques continuously while holding the same methodological standards across all of them.
+
+That is what this repository is meant to show. Not that I build architectures: my hands-on level is fine-tuning and evaluation design, and I would rather state that than let anyone assume otherwise. It is how I take a problem, work out what is actually being asked, and build an approach that holds together — the protocol written before the runs, the controls that make the comparison mean something, the statistics, and the record of what changed and why.
+
+I started this while preparing an application for a research position. The question is one I would want answered regardless, and of the domains I could have picked, cardiology is the one closest to home.
 
 ## Status
 
