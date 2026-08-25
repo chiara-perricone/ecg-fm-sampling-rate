@@ -28,3 +28,4 @@ results/**/raw/
 
 data/
 *.zip
+.venv/
