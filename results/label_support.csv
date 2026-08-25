@@ -1,0 +1,72 @@
+,description,n_total,n_train,n_test,prevalence_pct,in_macro_clean
+SR,sinus rhythm,16748,13404,1674,76.829,True
+NORM,normal ECG,9514,7596,963,43.644,True
+ABQRS,abnormal QRS,3327,2683,322,15.262,True
+IMI,inferior myocardial infarction,2676,2143,267,12.276,True
+ASMI,anteroseptal myocardial infarction,2357,1887,234,10.812,True
+LVH,left ventricular hypertrophy,2132,1708,214,9.78,True
+NDT,non-diagnostic T abnormalities,1825,1461,182,8.372,True
+LAFB,left anterior fascicular block,1623,1298,162,7.445,True
+AFIB,atrial fibrillation,1514,1211,152,6.945,True
+ISC_,non-specific ischemic,1272,1019,128,5.835,True
+PVC,ventricular premature complex,1143,915,114,5.243,True
+IRBBB,incomplete right bundle branch block,1118,894,112,5.129,True
+STD_,non-specific ST depression,1009,807,101,4.629,True
+VCLVH,voltage criteria (QRS) for left ventricular hypertrophy,875,701,87,4.014,True
+STACH,sinus tachycardia,826,661,82,3.789,True
+1AVB,first degree AV block,793,634,79,3.638,True
+IVCD,non-specific intraventricular conduction disturbance (block),787,630,79,3.61,True
+SARRH,sinus arrhythmia,772,618,77,3.541,True
+NST_,non-specific ST changes,767,615,77,3.519,True
+ISCAL,ischemic in anterolateral leads,659,527,66,3.023,True
+SBRAD,sinus bradycardia,637,509,64,2.922,True
+QWAVE,Q waves present,548,438,55,2.514,True
+CRBBB,complete right bundle branch block,541,432,54,2.482,True
+CLBBB,complete left bundle branch block,536,428,54,2.459,True
+ILMI,inferolateral myocardial infarction,478,383,48,2.193,True
+LOWT,low amplitude T-waves,438,350,44,2.009,True
+NT_,non-specific T-wave changes,423,340,42,1.94,True
+LAO/LAE,left atrial overload/enlargement,426,341,42,1.954,True
+PAC,atrial premature complex,398,318,40,1.826,True
+AMI,anterior myocardial infarction,353,282,35,1.619,True
+LPR,prolonged PR interval,340,272,34,1.56,True
+INVT,inverted T-waves,294,235,29,1.349,True
+PACE,normal functioning artificial pacemaker,294,237,28,1.349,True
+ALMI,anterolateral myocardial infarction,288,232,27,1.321,True
+INJAS,subendocardial injury in anteroseptal leads,214,171,22,0.982,True
+ISCIN,ischemic in inferior leads,218,175,22,1.0,True
+LMI,lateral myocardial infarction,201,161,20,0.922,True
+LVOLT,low QRS voltages in the frontal and horizontal leads,182,145,18,0.835,True
+LPFB,left posterior fascicular block,177,141,18,0.812,True
+ISCIL,ischemic in inferolateral leads,179,143,18,0.821,True
+DIG,digitalis-effect,181,145,18,0.83,True
+ISCAS,ischemic in anteroseptal leads,169,135,17,0.775,True
+INJAL,subendocardial injury in anterolateral leads,145,116,14,0.665,True
+SVARR,supraventricular arrhythmia,157,128,14,0.72,True
+ISCLA,ischemic in lateral leads,140,113,13,0.642,True
+RVH,right ventricular hypertrophy,126,102,12,0.578,True
+LNGQT,long QT-interval,117,94,11,0.537,True
+RAO/RAE,right atrial overload/enlargement,99,79,10,0.454,True
+ANEUR,ST-T changes compatible with ventricular aneurysm,104,84,10,0.477,True
+EL,electrolytic disturbance or drug (former EDIS),96,77,9,0.44,False
+BIGU,"bigeminal pattern (unknown origin, SV or Ventricular)",82,66,8,0.376,False
+WPW,Wolf-Parkinson-White syndrome,79,64,8,0.362,False
+ILBBB,incomplete left bundle branch block,77,62,8,0.353,False
+AFLT,atrial flutter,73,59,7,0.335,False
+HVOLT,high QRS voltage,62,49,6,0.284,False
+IPLMI,inferoposterolateral myocardial infarction,51,41,5,0.234,False
+ISCAN,ischemic in anterior leads,44,35,4,0.202,False
+TAB_,T-wave abnormality,35,28,3,0.161,False
+STE_,non-specific ST elevation,28,22,3,0.128,False
+SVTAC,supraventricular tachycardia,27,21,3,0.124,False
+IPMI,inferoposterior myocardial infarction,33,26,3,0.151,False
+INJLA,subendocardial injury in lateral leads,17,13,2,0.078,False
+3AVB,third degree AV block,16,12,2,0.073,False
+SEHYP,septal hypertrophy,29,24,2,0.133,False
+INJIN,subendocardial injury in inferior leads,18,14,2,0.083,False
+INJIL,subendocardial injury in inferolateral leads,15,11,2,0.069,False
+PMI,posterior myocardial infarction,17,13,2,0.078,False
+TRIGU,"trigeminal pattern (unknown origin, SV or Ventricular)",20,16,2,0.092,False
+PSVT,paroxysmal supraventricular tachycardia,24,19,2,0.11,False
+2AVB,second degree AV block,14,12,1,0.064,False
+PRC(S),premature complex(es),10,8,1,0.046,False

@@ -107,6 +107,53 @@ turns this into a designed contrast rather than leaving it as a confound.
 - `records100` is used once, as a secondary check on resampling sensitivity
   (§8.3), never in the primary comparison.
 
+### 5.1 What the data says before any run
+
+Produced by `scripts/describe.py` and `scripts/psd_bands.py` on 2026-08-26,
+against a copy verified file-by-file against PhysioNet's `SHA256SUMS.txt`
+(87,203 files, zero mismatches). Three findings bear on the design, and the
+amendments they motivated are logged in §10.
+
+**Label support is thin.** Of the 71 labels, only **49 have ten or more positive
+examples in fold 10**; 22 fall below, and two — `PRC(S)` and `2AVB` — have a
+single positive. Macro-averaging weights all 71 equally, so 31% of the primary
+metric would be carried by labels whose per-label AUROC is dominated by sampling
+noise. Against differences of 0.005–0.010 this is not a rounding concern.
+
+**The power that downsampling discards is small.** Mean Welch PSD over 500
+training records gives the share of total signal power above each rate's Nyquist
+frequency:
+
+| Rate | Nyquist | Power discarded |
+|---|---|---|
+| 100 Hz | 50 Hz | 0.538% |
+| 240 Hz | 120 Hz | 0.099% |
+| 250 Hz | 125 Hz | 0.087% |
+| 500 Hz | 250 Hz | 0% (identity) |
+
+Consistent with the 0.01–0.03 prior from Berger et al. (§8.2). Discarded power
+is not discarded discriminative information — pacemaker spikes are brief, hence
+high-frequency and low-energy, so they contribute negligibly to 0.538% while
+being the entire evidence for `PACE` — but a large figure would have made a
+large effect expected, and this is not one.
+
+**It is not mains interference.** PTB-XL was recorded in Germany, so mains is at
+50 Hz and harmonics fall at 100, 150 and 200 Hz — inside the band the 100 Hz arm
+removes. Measured against the mean density of two harmonic-free control windows
+(60–90 and 110–140 Hz), the harmonics show no excess at all: 0.70×, 0.29× and
+0.08× respectively. Only the 50 Hz fundamental stands out, at 5.46×. The
+discarded content is therefore broadband, and the hypothesis that downsampling
+to 100 Hz would remove interference rather than signal is rejected.
+
+That last result creates a problem the design did not previously account for.
+The 50 Hz fundamental is the single dominant peak in the spectrum and it sits
+**exactly on the Nyquist frequency of the 100 Hz arm**, inside the transition
+band of any anti-aliasing filter. Left alone, the 100 Hz arm receives partial
+mains suppression that the 240, 250 and 500 Hz arms do not. The arms would then
+differ in how much interference they carry as well as in temporal resolution —
+the same species of confound this repository exists to quantify in others. See
+§6.6 and §10.
+
 ## 6. Design
 
 ### 6.1 Rates
@@ -141,7 +188,7 @@ is the arm that answers Q1 as asked.
 **Arm B — compensated.** `dt_min` and `dt_max` scaled by 100/fs, holding the
 prior over *physical* timescales constant across rates. At 100 Hz Arm B is
 identical to Arm A by construction, so Arm B requires only the three non-
-reference rates. It is run unconditionally, whatever Arm A shows (§6.6).
+reference rates. It is run unconditionally, whatever Arm A shows (§6.7).
 
 The contrast A − B isolates how much of any observed effect is the timescale
 prior falling out of alignment, as opposed to information genuinely lost or
@@ -167,9 +214,39 @@ epochs, model selection on fold 9 by macro AUROC, loss binary cross-entropy —
 all following arXiv:2509.25095v2, §3.3. Layer-dependent learning rates are not
 used, since the S4 baseline there is trained from scratch rather than finetuned.
 
-### 6.6 Compute
+### 6.6 Mains filtering
 
-All 38 runs below are committed in advance and executed on rented GPU. Neither
+*Added 2026-08-26; see §5.1 and §10.*
+
+**Comparison arms (Stage 1 and 2): a 50 Hz notch is applied at every rate**, as
+fixed preprocessing, before resampling. Second-order IIR notch, Q = 30, applied
+identically to all four arms.
+
+The reason is in §5.1: the 50 Hz mains fundamental is the dominant spectral peak
+and sits on the 100 Hz arm's Nyquist frequency. Without a notch, that arm gets
+partial mains suppression for free while the others keep the interference, and
+any measured difference would mix "less interference" with "less temporal
+resolution". Removing the fundamental everywhere leaves sampling rate as the only
+thing that varies, which is the entire point of the design.
+
+**Blocking reproduction (Stage 0): no notch.** The 0.941 target was produced
+under the benchmark's stated preprocessing, which applies no additional
+filtering. Reproducing it requires matching that, not improving on it. The two
+stages do not conflict because Stage 0 is a separate comparison against a
+published number, not a member of the rate family.
+
+This is a real cost, stated plainly: the Stage 1 arms are no longer directly
+comparable to the published 0.941, because they carry one preprocessing step it
+did not. That is the correct trade. Stage 0 establishes that the pipeline can
+reproduce the literature; Stage 1 answers the question the repository asks, and
+answering it cleanly requires controlling the confound that §5.1 uncovered.
+
+An unnotched 100 Hz arm is retained as a secondary analysis (§8.3.4) to quantify
+what the notch decision itself is worth.
+
+### 6.7 Compute
+
+All 43 runs below are committed in advance and executed on rented GPU. Neither
 arm is conditional on the other's result.
 
 | Block | Cells | Runs |
@@ -177,6 +254,7 @@ arm is conditional on the other's result.
 | 0 — blocking check (§3) | 100 Hz × 3 seeds | 3 |
 | 1 — Arm A | 4 rates × 5 seeds | 20 |
 | 2 — Arm B | 3 rates × 5 seeds | 15 |
+| 3 — unnotched 100 Hz (§8.3.4) | 1 cell × 5 seeds | 5 |
 
 **Why rented rather than free.** Kaggle's free tier would fit this workload only
 by spreading it across several weeks, which in turn creates pressure to make
@@ -191,7 +269,7 @@ pressure. The cost is not a constraint here — S4 is a 2.2M-parameter model.
 epochs, so on the order of 27k optimisation steps per run. On a consumer card
 with strong fp32 throughput (RTX 4090 class, ~€0.35/h on Vast.ai or RunPod), the
 estimate is under an hour per run at 100 Hz and a few hours at 500 Hz, putting
-all 38 runs at roughly 20–30 GPU-hours and **well inside the €40 budget**, with
+all 43 runs at roughly 20–30 GPU-hours and **well inside the €40 budget**, with
 several times the headroom needed if the estimate is off.
 
 **These are estimates, so they get calibrated before anything is rented at
@@ -213,17 +291,28 @@ instance holds nothing else.
 
 ## 7. Metrics
 
-- **Primary:** macro AUROC over the 71 labels, computed on fold 10, matching
-  Strodthoff et al. (2021).
+*Primary endpoint amended 2026-08-26; see §5.1 and §10.*
+
+- **Primary endpoint for the rate comparison (§8.1): `macro_clean`**, the macro
+  AUROC over the 49 labels with ten or more positive examples in fold 10.
+- **Primary endpoint for the blocking reproduction (§3): `macro_all`**, over all
+  71 labels. The published 0.941 is defined on the full label set and has to be
+  compared as published.
+- Both are reported at every rate, always, so the effect of the choice is visible
+  rather than asserted.
+- **Why they differ.** §5.1 measures 22 of 71 labels below the ten-positive
+  threshold, two of them with a single positive. Macro-averaging weights all
+  labels equally, so under `macro_all` roughly a third of the metric is carried
+  by estimates whose sampling variance is very large. The differences being
+  measured here are 0.005–0.010; a metric that noisy on a third of its terms
+  cannot resolve them. Berger et al. (§5.4.2, Tables 4, 23–25) show that removing
+  low-support labels shifts macro AUROC enough to reorder methods.
+- **The label set is frozen.** Computed once from fold 10 by
+  `scripts/describe.py` and committed as `results/frozen_label_set.json` before
+  any training run, so it is identical across rates and cannot be influenced by
+  a result.
 - **Per-label AUROC and AUPRC** reported for every run in `results/`, not only
-  the macro summary (Berger et al., arXiv:2602.17531v2, §4).
-- **Low-support exclusion.** PTB-XL (all) contains labels with very few positive
-  test examples; removing labels with fewer than ten positives can shift
-  macro-AUROC enough to reorder methods (Berger et al., §5.4.2, Tables 4, 23–25).
-  Both figures are reported at every rate: `macro_all` over all evaluable labels
-  and `macro_clean` over labels with ≥10 positives in fold 10. The label set for
-  `macro_clean` is computed once from fold 10 and frozen before any run, so it is
-  identical across rates.
+  the macro summaries (Berger et al., arXiv:2602.17531v2, §4).
 - **Undefined labels.** A label with no positive or no negative example in a
   bootstrap resample has undefined AUROC. `src/ecgres/metrics.py` excludes it
   from that resample's macro average rather than imputing 0.5, and the exclusion
@@ -246,6 +335,23 @@ All six pairwise rate comparisons within Arm A, on the shared fold 10 test set.
 Seed variation is handled by averaging predictions across seeds within a rate
 before the paired bootstrap, and separately by reporting the seed-level spread
 per rate. Both are reported; neither is chosen after seeing the result.
+
+**Negative control: 240 Hz versus 250 Hz.** *Added 2026-08-26; see §10.*
+
+§5.1 measures the power discarded at these two rates as 0.099% and 0.087% — a
+difference of about a hundredth of a percent of total signal power, and both
+Nyquist frequencies sit in a region where the spectrum is already near the noise
+floor. Physically, this pair should show no effect.
+
+It therefore serves as a calibration of the null within the experiment itself.
+If the paired bootstrap finds a significant difference between 240 and 250 Hz,
+the finding is noise, a pipeline defect, or an artefact of the resampling
+implementation — not sampling rate. Any effect claimed elsewhere in the family
+has to be read against this pair.
+
+This costs nothing: both rates are already in the design for other reasons. It
+is declared here rather than noticed afterwards, which is the only way a control
+of this kind is worth anything.
 
 ### 8.2 Pre-specified interpretation
 
@@ -284,6 +390,12 @@ Declared now so they are not mistaken later for the primary result.
    is about resampling implementation, not about rate.
 3. **Per-label breakdown** of where any effect concentrates — whether it falls on
    high-frequency morphology labels, as a Nyquist argument would predict.
+   `PACE` is the label to watch: pacemaker spikes are brief, so they carry
+   almost no energy but everything the label depends on.
+4. **Notched versus unnotched at 100 Hz** (added 2026-08-26): one extra cell,
+   5 seeds, Arm A at 100 Hz without the §6.6 notch. Quantifies what the notch
+   decision is worth, and whether the mains fundamental sitting on that arm's
+   Nyquist frequency mattered at all.
 
 Analysis 3 is exploratory and will be labelled as such. It is the one most likely
 to produce a compelling post-hoc story, which is exactly why it is fenced off
@@ -308,6 +420,13 @@ Entries are appended with the date and the reason. **Nothing is removed from thi
 section.** If a decision in §1–§9 turns out to be wrong or unworkable, the change
 is recorded here rather than edited into the protocol above.
 
+Where an amendment does change the body text, the affected section carries a
+dated marker pointing here, so the current text and its history are both
+readable. All three entries below predate any training run: they follow from
+descriptive analysis of the inputs (§5.1), not from any result.
+
 | Date | Section | Change | Reason |
 |---|---|---|---|
-| — | — | (none yet) | — |
+| 2026-08-26 | §7 | Primary endpoint for the rate comparison changed from `macro_all` (71 labels) to `macro_clean` (49 labels with ≥10 positives in fold 10). `macro_all` retained as the endpoint for the §3 blocking reproduction, and both reported everywhere. | `scripts/describe.py` measures 22 of 71 labels below the threshold, two with a single positive. Under `macro_all`, ~31% of the metric is carried by estimates whose sampling variance is very large, against target differences of 0.005–0.010. The 0.941 reproduction still uses `macro_all` because the published figure is defined on all 71 labels. |
+| 2026-08-26 | §6.6 (new) | A 50 Hz notch (IIR, Q=30) is applied at every rate in the comparison arms, before resampling. Stage 0 keeps the benchmark's unfiltered preprocessing. Unnotched 100 Hz added as secondary analysis §8.3.4. | `scripts/psd_bands.py` shows the 50 Hz mains fundamental is the dominant spectral peak (5.46× the harmonic-free control density) and sits exactly on the 100 Hz arm's Nyquist frequency. Unnotched, that arm would receive partial mains suppression the other arms do not, mixing "less interference" with "less temporal resolution" — the confound this work exists to measure in others. Cost acknowledged: Stage 1 arms are no longer directly comparable to the published 0.941. |
+| 2026-08-26 | §8.1 | 240 Hz vs 250 Hz declared as an internal negative control. | Power discarded at the two rates is 0.099% and 0.087%; physically no effect is expected. A significant difference there would indicate noise or a pipeline defect, calibrating the null scale for the rest of the family. Costs no additional runs. |
