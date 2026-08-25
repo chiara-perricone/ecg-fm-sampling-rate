@@ -25,3 +25,6 @@ wandb/
 
 # results: keep the tables, not the raw dumps
 results/**/raw/
+
+data/
+*.zip
