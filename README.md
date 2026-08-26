@@ -79,6 +79,9 @@ I started this while preparing an application for a research position. The quest
 **No results yet.** This table is updated as runs complete, including runs that
 do not support the hypothesis.
 
+`RUNBOOK.md` gives the steps to reproduce all of it from nothing, in the order
+they have to happen, with what to check before each one.
+
 The ordering above is the point rather than an accident. The protocol, the run
 matrix and the analysis are all committed before the data they will be applied
 to exists, so that no choice among them can have been made by looking at an

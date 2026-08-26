@@ -29,6 +29,7 @@ __all__ = [
     "scaler_spec",
     "resolve_scaler",
     "configure_numerics",
+    "cauchy_backend",
     # Ri-esportati da ``ecgres.report``, che non ha dipendenze: gli script di
     # sola analisi devono importarli da li', non da qui.
     "git_sha",
@@ -144,6 +145,24 @@ def resolve_scaler(
 # --------------------------------------------------------------------------
 # Impostazioni numeriche e provenienza
 # --------------------------------------------------------------------------
+
+def cauchy_backend() -> str:
+    """Quale implementazione del kernel di Cauchy sta usando ``s4.py``.
+
+    Non e' una nota di prestazioni: le tre implementazioni sommano nello stesso
+    modo solo in aritmetica esatta, quindi cambiare backend cambia i numeri
+    negli ultimi bit. Va registrata insieme a TF32 e al determinismo, e finisce
+    nell'impronta del checkpoint: misurare la velocita' con un backend e poi
+    riprendere il run con un altro darebbe epoche calcolate diversamente.
+    """
+    from .vendor import s4
+
+    if getattr(s4, "has_cauchy_extension", False):
+        return "cuda_extension"
+    if getattr(s4, "has_pykeops", False):
+        return "pykeops"
+    return "naive"
+
 
 def configure_numerics(tf32: bool, deterministic: bool) -> None:
     """TF32 e determinismo, entrambi espliciti e registrati nel manifest.

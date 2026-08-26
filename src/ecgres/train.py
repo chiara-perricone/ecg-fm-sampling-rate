@@ -259,6 +259,7 @@ def training_fingerprint(
     train_dataset: WindowDataset,
     val_dataset: WindowDataset,
     clean_columns: Sequence[int],
+    numerics: dict | None = None,
 ) -> str:
     """Impronta di tutto cio' che, cambiando, rende un checkpoint inutilizzabile.
 
@@ -283,6 +284,11 @@ def training_fingerprint(
         "val_record_ids": _digest(val_dataset.record_ids),
         "scaler": [train_dataset.scaler.mean, train_dataset.scaler.std],
         "clean_columns": _digest(clean_columns),
+        # TF32, determinismo e backend del kernel di Cauchy cambiano i numeri
+        # prodotti, non solo la velocita'. Riprendere un run misurando la
+        # velocita' con un backend e proseguendo con un altro darebbe un run le
+        # cui epoche non sono state calcolate allo stesso modo.
+        "numerics": dict(sorted((numerics or {}).items())),
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, default=str).encode()
@@ -317,6 +323,7 @@ def run_training(
     out_dir: str | Path,
     cfg: TrainConfig | None = None,
     device: str | torch.device = "cpu",
+    numerics: dict | None = None,
     manifest_extra: dict | None = None,
 ) -> list[dict]:
     """Allena un run e restituisce la storia per epoca.
@@ -341,7 +348,7 @@ def run_training(
     loss_fn = nn.BCEWithLogitsLoss()
 
     fingerprint = training_fingerprint(
-        run, model_cfg, cfg, train_dataset, val_dataset, clean_columns
+        run, model_cfg, cfg, train_dataset, val_dataset, clean_columns, numerics
     )
 
     history: list[dict] = []
@@ -366,7 +373,10 @@ def run_training(
         history = list(state["history"])
         start_epoch = state["epoch"] + 1
 
-    _write_manifest(out_dir, run, model_cfg, cfg, device, manifest_extra)
+    _write_manifest(
+        out_dir, run, model_cfg, cfg, device,
+        {"fingerprint": fingerprint, "numerics": numerics or {}, **(manifest_extra or {})},
+    )
 
     for epoch in range(start_epoch, cfg.epochs):
         loss = _train_one_epoch(

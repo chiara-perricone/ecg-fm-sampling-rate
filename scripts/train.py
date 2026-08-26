@@ -32,6 +32,7 @@ import torch  # noqa: E402
 from ecgres import data as D  # noqa: E402
 from ecgres.model import CropSampler, ModelConfig, WindowDataset  # noqa: E402
 from ecgres.pipeline import (  # noqa: E402
+    cauchy_backend,
     clean_columns,
     configure_numerics,
     git_sha,
@@ -102,8 +103,14 @@ def main() -> int:
         info("ATTENZIONE", "run ridotto: non e' un run del protocollo")
 
     configure_numerics(tf32=args.tf32, deterministic=args.deterministic)
-    info("tf32", str(args.tf32))
-    info("algoritmi deterministici", str(args.deterministic))
+    numerics = {
+        "tf32": bool(args.tf32),
+        "deterministic": bool(args.deterministic),
+        "cauchy_backend": cauchy_backend(),
+    }
+    info("tf32", str(numerics["tf32"]))
+    info("algoritmi deterministici", str(numerics["deterministic"]))
+    info("kernel di Cauchy", numerics["cauchy_backend"])
 
     section("Dati")
     if not (args.root / "ptbxl_database.csv").exists():
@@ -158,6 +165,7 @@ def main() -> int:
         out_dir=out_dir,
         cfg=train_cfg,
         device=args.device,
+        numerics=numerics,
         manifest_extra={
             "git_sha": git_sha(REPO_ROOT),
             "scaler": {"path": scaler_path.name, **scaler.provenance,

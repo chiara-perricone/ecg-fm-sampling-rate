@@ -310,6 +310,32 @@ def test_fingerprint_ignores_the_epoch_count():
     assert a != c  # il batch invece conta
 
 
+def test_fingerprint_changes_with_the_numerics():
+    """TF32, determinismo e backend di Cauchy cambiano i numeri, non solo il tempo.
+
+    E' il caso concreto del runbook: si misura la velocita' con un backend, si
+    installa pykeops, si riprende il run. Senza questo campo il checkpoint
+    verrebbe accettato e le epoche del run sarebbero state calcolate in due modi
+    diversi, senza che nulla lo dica.
+    """
+    from ecgres.train import training_fingerprint
+
+    run, cfg, train_ds, val_ds = _setup()
+    base = dict(tf32=False, deterministic=False, cauchy_backend="naive")
+    a = training_fingerprint(run, cfg, TrainConfig(), train_ds, val_ds, CLEAN, base)
+    for changed in ({"tf32": True}, {"deterministic": True},
+                    {"cauchy_backend": "pykeops"}):
+        other = training_fingerprint(
+            run, cfg, TrainConfig(), train_ds, val_ds, CLEAN, {**base, **changed}
+        )
+        assert a != other, changed
+    # L'ordine delle chiavi non e' un cambiamento.
+    shuffled = dict(reversed(list(base.items())))
+    assert a == training_fingerprint(
+        run, cfg, TrainConfig(), train_ds, val_ds, CLEAN, shuffled
+    )
+
+
 def test_fingerprint_changes_with_the_scaler():
     """Due costanti di normalizzazione diverse sono due esperimenti diversi."""
     from ecgres.train import training_fingerprint
