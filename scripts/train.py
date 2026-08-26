@@ -20,12 +20,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 import time
 from pathlib import Path
-
-import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -33,139 +30,20 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 import torch  # noqa: E402
 
 from ecgres import data as D  # noqa: E402
-from ecgres.model import FIT_FS, CropSampler, GlobalScaler, ModelConfig, WindowDataset  # noqa: E402
-from ecgres.runs import RunSpec, load_runs  # noqa: E402
+from ecgres.model import CropSampler, ModelConfig, WindowDataset  # noqa: E402
+from ecgres.pipeline import (  # noqa: E402
+    clean_columns,
+    configure_numerics,
+    git_sha,
+    info,
+    resolve_scaler,
+    section,
+)
+from ecgres.runs import load_runs  # noqa: E402
 from ecgres.train import TrainConfig, run_training  # noqa: E402
 
 FROZEN_LABELS = REPO_ROOT / "results" / "frozen_label_set.json"
 RUNS_CSV = REPO_ROOT / "configs" / "runs.csv"
-
-#: Blocco della condizione bloccante (§3). Vedi ``resolve_scaler``.
-BLOCKING_BLOCK = 0
-
-
-def section(title: str) -> None:
-    print(f"\n{title}\n{'-' * len(title)}", flush=True)
-
-
-def info(label: str, detail: str = "") -> None:
-    print(f"  [    ] {label}{(': ' + detail) if detail else ''}", flush=True)
-
-
-# --------------------------------------------------------------------------
-# Etichette
-# --------------------------------------------------------------------------
-
-def clean_columns(label_names: list[str]) -> list[int]:
-    """Posizioni delle 49 etichette congelate dentro la matrice a 71 colonne.
-
-    Il set e' letto, non ricalcolato: e' stato congelato prima di ogni run
-    (§7) e ricalcolarlo qui lo renderebbe funzione dei dati presenti sul disco
-    di turno. Si verifica pero' che sia coerente con quanto dichiara di essere.
-    """
-    frozen = json.loads(FROZEN_LABELS.read_text(encoding="utf-8"))
-    names = list(frozen["labels_clean"])
-    if len(names) != frozen["n_labels_clean"]:
-        raise ValueError(
-            f"{FROZEN_LABELS.name} dichiara {frozen['n_labels_clean']} etichette "
-            f"ma ne elenca {len(names)}"
-        )
-    if len(label_names) != frozen["n_labels_all"]:
-        raise ValueError(
-            f"la matrice ha {len(label_names)} colonne, il set congelato ne "
-            f"presuppone {frozen['n_labels_all']}"
-        )
-    position = {name: i for i, name in enumerate(label_names)}
-    missing = [n for n in names if n not in position]
-    if missing:
-        raise ValueError(f"etichette congelate assenti da scp_statements.csv: {missing}")
-    return [position[n] for n in names]
-
-
-# --------------------------------------------------------------------------
-# Scaler
-# --------------------------------------------------------------------------
-
-def resolve_scaler(
-    run: RunSpec, root: Path, cache_dir: Path, meta, train_idx: np.ndarray
-) -> tuple[GlobalScaler, Path]:
-    """Lo scaler del run, fittato una volta sola e riusato (§10 voci 7 e 8).
-
-    Due scaler, non uno, ed e' il protocollo a volerlo. La voce 8 dichiara
-    esplicitamente che *"Stage 0 uses the reference pipeline's own scaler"*:
-
-    * **blocco 0** — scaler fittato sulla cache del run stesso, cioe' 100 Hz
-      senza notch, come fa la pipeline di riferimento. Deve riprodurre 0,941, e
-      normalizzare con costanti che il riferimento non ha usato sarebbe un
-      ulteriore candidato a spiegare un fallimento stretto;
-    * **blocchi 1-3** — un unico scaler fittato a 500 Hz **con notch**, sui
-      fold 1-8, applicato invariato a tutti i bracci del confronto. E' il
-      500 Hz da cui ogni braccio del confronto deriva.
-
-    Il file viene riusato se esiste, dopo aver verificato che la provenienza sia
-    quella attesa: uno scaler giusto per caso sarebbe peggio di uno sbagliato.
-    """
-    if run.block == BLOCKING_BLOCK:
-        fit_fs, fit_notch = run.fs, run.notch
-    else:
-        fit_fs, fit_notch = FIT_FS, True
-
-    path = cache_dir / f"scaler_fs{fit_fs}_notch{int(fit_notch)}.json"
-    expected = {"fs": fit_fs, "notch": fit_notch, "source": "hr", "window": "full_record"}
-
-    if path.exists():
-        scaler = GlobalScaler.from_json(path)
-        wrong = {k: (scaler.provenance.get(k), v) for k, v in expected.items()
-                 if scaler.provenance.get(k) != v}
-        if wrong:
-            raise ValueError(f"{path.name} ha provenienza inattesa: {wrong}")
-        return scaler, path
-
-    cache = D.SignalCache(root, cache_dir, meta, fs=fit_fs, notch=fit_notch)
-    info("fit dello scaler", f"{fit_fs} Hz, notch={fit_notch}, {train_idx.size} record")
-    provenance = {
-        "fs": fit_fs,
-        "notch": fit_notch,
-        "source": "hr",
-        "folds": list(D.SPLIT_FOLDS["train"]),
-        "cache_stem": cache.stem,
-        "fitted_for": "stage0" if run.block == BLOCKING_BLOCK else "comparison",
-    }
-    scaler = GlobalScaler.fit(cache.array, train_idx, provenance=provenance)
-    scaler.to_json(path)
-    return scaler, path
-
-
-# --------------------------------------------------------------------------
-# Impostazioni numeriche
-# --------------------------------------------------------------------------
-
-def configure_numerics(tf32: bool, deterministic: bool) -> None:
-    """TF32 e determinismo, entrambi espliciti e registrati nel manifest.
-
-    TF32 ha 10 bit di mantissa: lasciarlo acceso significa che "fp32" di §6.7
-    non e' vero. Va spento per default e acceso solo di proposito, ad esempio
-    per misurare quanto costa spegnerlo.
-    """
-    torch.backends.cuda.matmul.allow_tf32 = tf32
-    torch.backends.cudnn.allow_tf32 = tf32
-    torch.backends.cudnn.deterministic = deterministic
-    torch.backends.cudnn.benchmark = not deterministic
-    if deterministic:
-        # Solleva invece di rallentare in silenzio, se un'operazione non ha
-        # implementazione deterministica: e' un fallimento leggibile e immediato.
-        torch.use_deterministic_algorithms(True, warn_only=False)
-
-
-def git_sha() -> str | None:
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT,
-            capture_output=True, text=True, check=True,
-        )
-    except Exception:
-        return None
-    return out.stdout.strip()
 
 
 # --------------------------------------------------------------------------
@@ -231,7 +109,7 @@ def main() -> int:
     meta = D.load_metadata(args.root)
     splits = D.get_splits(meta)
     labels, label_names = D.load_label_matrix(args.root, meta)
-    columns = clean_columns(label_names)
+    columns = clean_columns(label_names, FROZEN_LABELS)
     info("record", f"{len(meta)} — train {splits.train.size}, val {splits.val.size}, "
                    f"test {splits.test.size}")
     info("etichette", f"{labels.shape[1]} in tutto, {len(columns)} nel set congelato")
@@ -275,7 +153,7 @@ def main() -> int:
         cfg=train_cfg,
         device=args.device,
         manifest_extra={
-            "git_sha": git_sha(),
+            "git_sha": git_sha(REPO_ROOT),
             "scaler": {"path": scaler_path.name, **scaler.provenance,
                        "mean": scaler.mean, "std": scaler.std},
             "cache_stem": cache.stem,
