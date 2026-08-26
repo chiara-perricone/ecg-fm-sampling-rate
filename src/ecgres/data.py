@@ -410,6 +410,14 @@ class SignalCache:
     def meta_path(self) -> Path:
         return self.cache_dir / f"{self.stem}.json"
 
+    def __len__(self) -> int:
+        """Record nella cache, cioe' righe di ``meta``.
+
+        Richiesto da ``ecgres.model.CacheLike``: ``WindowDataset`` lo usa per
+        verificare che la matrice delle etichette sia allineata ai record.
+        """
+        return len(self.meta)
+
     def _fingerprint(self) -> str:
         payload = ",".join(str(i) for i in self.meta.index.tolist())
         return hashlib.sha256(payload.encode()).hexdigest()[:16]

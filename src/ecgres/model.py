@@ -566,7 +566,9 @@ class WindowDataset(torch.utils.data.Dataset):
                 f"labels ha {labels.shape[1]} colonne, la config {cfg.n_classes}"
             )
         self.cache = cache
-        self.record_ids = list(record_ids)
+        # ``int`` esplicito: gli split arrivano come ``np.int64``, che il
+        # collate del DataLoader tratta diversamente dagli interi Python.
+        self.record_ids = [int(r) for r in record_ids]
         self.labels = labels
         self.scaler = scaler
         self.cfg = cfg

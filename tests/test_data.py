@@ -284,6 +284,12 @@ def test_crop_past_record_end_raises(cache_100):
         cache_100.crop([0], [8.0])
 
 
+def test_cache_length_is_the_record_count(cache_100, mini_ptbxl):
+    """``WindowDataset`` lo usa per verificare l'allineamento delle etichette."""
+    _, meta = mini_ptbxl
+    assert len(cache_100) == len(meta)
+
+
 def test_grid_index_rejects_on_sample_but_off_grid():
     """0,05 s da' 5 a 100 Hz e 12 a 240 Hz, ma 12,5 a 250 Hz.
 
