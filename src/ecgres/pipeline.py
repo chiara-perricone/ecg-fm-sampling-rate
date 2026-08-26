@@ -13,7 +13,6 @@ non ne ha bisogno, resta in ``ecgres.train``.
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -21,6 +20,7 @@ import numpy as np
 
 from . import data as D
 from .model import FIT_FS, GlobalScaler
+from .report import git_sha, info, section
 from .runs import RunSpec
 
 __all__ = [
@@ -29,25 +29,15 @@ __all__ = [
     "scaler_spec",
     "resolve_scaler",
     "configure_numerics",
+    # Ri-esportati da ``ecgres.report``, che non ha dipendenze: gli script di
+    # sola analisi devono importarli da li', non da qui.
     "git_sha",
-    "section",
     "info",
+    "section",
 ]
 
 #: Blocco della condizione bloccante (§3). Vedi ``scaler_spec``.
 BLOCKING_BLOCK = 0
-
-
-# --------------------------------------------------------------------------
-# Stampa
-# --------------------------------------------------------------------------
-
-def section(title: str) -> None:
-    print(f"\n{title}\n{'-' * len(title)}", flush=True)
-
-
-def info(label: str, detail: str = "") -> None:
-    print(f"  [    ] {label}{(': ' + detail) if detail else ''}", flush=True)
 
 
 # --------------------------------------------------------------------------
@@ -176,16 +166,3 @@ def configure_numerics(tf32: bool, deterministic: bool) -> None:
         torch.use_deterministic_algorithms(True, warn_only=False)
 
 
-def git_sha(repo_root: str | Path) -> str | None:
-    """Commit corrente, o ``None`` fuori da un repo. Non solleva mai."""
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=str(repo_root),
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except Exception:
-        return None
-    return out.stdout.strip() or None

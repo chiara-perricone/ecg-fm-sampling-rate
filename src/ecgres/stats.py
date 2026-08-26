@@ -63,8 +63,14 @@ class Comparison:
         )
 
 
-def _bootstrap_indices(n: int, n_boot: int, rng: np.random.Generator) -> np.ndarray:
-    """Shared case-resampling index matrix, shape (n_boot, n)."""
+def bootstrap_indices(n: int, n_boot: int, rng: np.random.Generator) -> np.ndarray:
+    """Shared case-resampling index matrix, shape (n_boot, n).
+
+    Public because more than one comparison needs the *same* resamples. Section
+    3 evaluates three seeds on one test set: giving each seed its own resamples
+    would treat as independent what is in fact the same set of patients, and
+    would widen the interval by variation that does not exist.
+    """
     return rng.integers(0, n, size=(n_boot, n))
 
 
@@ -85,7 +91,7 @@ def bootstrap_ci(
         raise ValueError("y_true and y_score must have the same number of rows")
 
     rng = np.random.default_rng(seed)
-    idx = _bootstrap_indices(len(y_true), n_boot, rng)
+    idx = bootstrap_indices(len(y_true), n_boot, rng)
 
     point = metric_fn(y_true, y_score)
     draws = np.array([metric_fn(y_true[i], y_score[i]) for i in idx], dtype=float)
@@ -117,7 +123,7 @@ def paired_bootstrap(
         raise ValueError("y_true, score_a and score_b must have the same number of rows")
 
     rng = np.random.default_rng(seed)
-    idx = _bootstrap_indices(len(y_true), n_boot, rng)
+    idx = bootstrap_indices(len(y_true), n_boot, rng)
 
     diff = metric_fn(y_true, score_a) - metric_fn(y_true, score_b)
     draws = np.array(

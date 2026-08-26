@@ -11,6 +11,7 @@ is exactly the kind of thing that makes benchmark tables misleading.
 from __future__ import annotations
 
 import numpy as np
+from scipy.stats import rankdata
 from sklearn.metrics import average_precision_score, roc_auc_score
 
 
@@ -31,6 +32,40 @@ def macro_auroc(y_true: np.ndarray, y_score: np.ndarray) -> float:
     if not scores:
         return float("nan")
     return float(np.mean(scores))
+
+
+def macro_auroc_fast(y_true: np.ndarray, y_score: np.ndarray) -> float:
+    """Same quantity as :func:`macro_auroc`, computed in one pass over columns.
+
+    AUROC equals the Mann-Whitney statistic, so it can be read off the midranks
+    of the scores instead of by sweeping a threshold. ``scipy.stats.rankdata``
+    ranks every label column at once, which turns 71 calls into one.
+
+    This exists for bootstrapping. Section 3 resamples 10,000 times over three
+    seeds, i.e. 2.1 million per-label evaluations; measured on a 2198 x 71 test
+    set that is about 40 minutes through scikit-learn against 5 minutes here.
+    The slow implementation is kept as the definition and this one is pinned to
+    it by ``test_metrics.py`` — including on tied scores, where the midrank
+    convention is exactly what makes the two agree.
+    """
+    y_true = np.asarray(y_true)
+    y_score = np.asarray(y_score, dtype=np.float64)
+    if y_true.ndim == 1:
+        y_true = y_true[:, None]
+        y_score = y_score[:, None]
+
+    n = y_true.shape[0]
+    n_pos = y_true.sum(axis=0).astype(np.float64)
+    n_neg = n - n_pos
+    defined = (n_pos > 0) & (n_neg > 0)
+    if not defined.any():
+        return float("nan")
+
+    ranks = rankdata(y_score, axis=0)
+    rank_sum = (ranks * (y_true > 0)).sum(axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        auc = (rank_sum - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg)
+    return float(auc[defined].mean())
 
 
 def per_label_scores(y_true: np.ndarray, y_score: np.ndarray) -> dict[str, np.ndarray]:

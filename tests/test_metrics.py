@@ -10,7 +10,12 @@ import numpy as np
 import pytest
 from sklearn.metrics import average_precision_score, roc_auc_score
 
-from ecgres.metrics import defined_label_fraction, macro_auroc, per_label_scores
+from ecgres.metrics import (
+    defined_label_fraction,
+    macro_auroc,
+    macro_auroc_fast,
+    per_label_scores,
+)
 
 
 def _case():
@@ -70,6 +75,48 @@ def test_macro_auroc_is_the_mean_of_the_defined_columns():
 def test_macro_auroc_is_nan_when_nothing_is_defined():
     y = np.ones((4, 3), dtype=int)
     assert np.isnan(macro_auroc(y, np.random.default_rng(0).random((4, 3))))
+
+
+# --------------------------------------------------------------------------- #
+# Percorso veloce
+# --------------------------------------------------------------------------- #
+
+
+def _random_case(rng, n=300, n_labels=12, tied=False):
+    y = rng.integers(0, 2, size=(n, n_labels))
+    y[0] = 1
+    y[1] = 0  # nessuna colonna degenere
+    p = rng.random((n, n_labels))
+    if tied:
+        p = np.round(p, 1)  # molti valori identici
+    return y, p
+
+
+@pytest.mark.parametrize("tied", [False, True])
+def test_fast_macro_auroc_agrees_with_sklearn(tied):
+    """Il percorso veloce e' un'ottimizzazione, non una metrica diversa.
+
+    Il caso con pareggi e' quello che conta: la AUROC di sklearn accredita
+    mezzo punto a ogni pari, ed e' la convenzione dei ranghi medi che fa
+    coincidere le due formule. Con i ranghi ordinari divergerebbero.
+    """
+    rng = np.random.default_rng(3)
+    for _ in range(5):
+        y, p = _random_case(rng, tied=tied)
+        assert macro_auroc_fast(y, p) == pytest.approx(macro_auroc(y, p), abs=1e-12)
+
+
+def test_fast_macro_auroc_skips_undefined_columns_too():
+    y, p = _case()
+    assert macro_auroc_fast(y, p) == pytest.approx(macro_auroc(y, p), abs=1e-12)
+    assert np.isnan(macro_auroc_fast(np.ones((4, 3), dtype=int), np.zeros((4, 3))))
+
+
+def test_fast_macro_auroc_handles_a_single_column():
+    y = np.array([[0], [0], [1], [1]])
+    p = np.array([[0.1], [0.4], [0.35], [0.8]])
+    assert macro_auroc_fast(y, p) == pytest.approx(macro_auroc(y, p), abs=1e-12)
+    assert macro_auroc_fast(y.ravel(), p.ravel()) == pytest.approx(0.75)
 
 
 def test_perfect_and_inverted_scores():
