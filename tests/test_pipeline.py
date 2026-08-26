@@ -83,11 +83,24 @@ def test_stage0_fits_on_its_own_cache():
         assert scaler_spec(run) == (100, False) == (run.fs, run.notch)
 
 
-@pytest.mark.parametrize("block", [1, 2, 3])
+@pytest.mark.parametrize("block", [1, 2, 3, 4])
 def test_the_comparison_shares_one_scaler_at_500hz_notched(block):
     """Un solo scaler per tutti i bracci, fittato dove nascono (voce 8)."""
     specs = {scaler_spec(run) for run in _by_block(block)}
     assert specs == {(500, True)}
+
+
+def test_block_four_shares_the_scaler_with_block_three():
+    """§8.3.2 deve isolare la provenienza, non la normalizzazione.
+
+    I blocchi 3 e 4 differiscono per la sorgente del segnale. Se differissero
+    anche per lo scaler, il confronto misurerebbe due cose insieme e nessuna
+    delle due separatamente.
+    """
+    three = _by_block(3)[0]
+    four = _by_block(4)[0]
+    assert three.source != four.source
+    assert scaler_spec(three) == scaler_spec(four) == (500, True)
 
 
 def test_block_three_does_not_follow_its_own_preprocessing():

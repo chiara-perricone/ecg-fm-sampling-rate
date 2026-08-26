@@ -16,8 +16,8 @@ CSV = ROOT / "configs" / "runs.csv"
 
 #: La tabella di §6.7, trascritta a mano. Se cambia il protocollo, cambia qui,
 #: e il cambiamento e' visibile nel diff invece di essere implicito nel codice.
-EXPECTED_RUNS_PER_BLOCK = {0: 3, 1: 20, 2: 15, 3: 5}
-EXPECTED_TOTAL = 43
+EXPECTED_RUNS_PER_BLOCK = {0: 3, 1: 20, 2: 15, 3: 5, 4: 5}
+EXPECTED_TOTAL = 48
 
 #: Tre run del blocco 3 ripetono una configurazione del blocco 0 (§10 voce 14).
 EXPECTED_DUPLICATE_PAIRS = 3
@@ -52,9 +52,11 @@ def test_blocks_zero_and_three_duplicate_three_configurations():
         assert sorted(r.block for r in rows) == [0, 3]
         assert sorted(r.selection for r in rows) == ["macro_all", "macro_clean"]
         assert {r.config_key for r in rows} == {key}
-        assert key[:3] == (100, "A", False)  # 100 Hz, Arm A, senza notch
+        # 100 Hz, Arm A, senza notch, da records500: il blocco 4 condivide i
+        # primi tre campi ma non la sorgente, quindi non entra qui.
+        assert key[:4] == (100, "A", False, "hr")
 
-    seeds = sorted(key[3] for key in duplicates)
+    seeds = sorted(key[4] for key in duplicates)
     assert seeds == sorted(R.BLOCKING_SEEDS)
 
 
@@ -65,7 +67,7 @@ def test_selection_does_not_belong_to_the_config_key():
     smetterebbero di essere duplicati e il confronto perderebbe senso.
     """
     a, b = (r for r in R.enumerate_runs() if r.fs == 100 and r.seed == 0
-            and r.arm == "A" and not r.notch)
+            and r.arm == "A" and not r.notch and r.source == "hr")
     assert a.selection != b.selection
     assert a.config_key == b.config_key
 
@@ -78,9 +80,34 @@ def test_selection_metric_follows_deviation_13():
 
 
 def test_notch_is_off_only_where_the_protocol_says():
-    """Notch assente nel blocco 0 (§6.6) e nel blocco 3 (§8.3.4), presente altrove."""
+    """Notch presente solo nei blocchi del confronto (1 e 2).
+
+    Assente nel blocco 0 (§6.6), nel 3 (§8.3.4) e nel 4, dove non e' nemmeno
+    applicabile: ``records100`` ha la fondamentale di rete sul proprio Nyquist.
+    """
     for run in R.enumerate_runs():
         assert run.notch == (run.block in (1, 2)), run
+
+
+def test_records100_is_used_only_by_block_four():
+    """§4: ``records500`` e' la sorgente unica, salvo l'analisi §8.3.2."""
+    for run in R.enumerate_runs():
+        assert run.source == ("lr" if run.block == 4 else "hr"), run
+        if run.source == "lr":
+            assert (run.fs, run.notch) == (100, False), run
+
+
+def test_block_four_differs_from_block_three_only_in_provenance():
+    """Il confronto di §8.3.2 deve avere un solo grado di liberta'."""
+    three = {r.seed: r for r in R.enumerate_runs() if r.block == 3}
+    four = {r.seed: r for r in R.enumerate_runs() if r.block == 4}
+    assert set(three) == set(four)
+    for seed in three:
+        a, b = three[seed], four[seed]
+        assert (a.fs, a.arm, a.notch, a.selection) == (b.fs, b.arm, b.notch, b.selection)
+        assert a.source != b.source
+        # E proprio per questo non sono duplicati: ``source`` sta nella chiave.
+        assert a.config_key != b.config_key
 
 
 def test_arm_b_skips_100hz():

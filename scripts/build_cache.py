@@ -243,12 +243,18 @@ def check_recompute(root: Path, cache: D.SignalCache, meta: pd.DataFrame,
 
     rng = np.random.default_rng(1)
     positions = rng.choice(len(meta), size=min(n_probe, len(meta)), replace=False)
+    column = "filename_hr" if cache.source == "hr" else "filename_lr"
     worst = 0.0
     for pos in positions:
-        rel = meta["filename_hr"].iloc[pos]
+        rel = meta[column].iloc[pos]
         signal, _ = wfdb.rdsamp(str(root / rel))
-        fresh = D.preprocess_record(
-            np.asarray(signal, dtype=np.float64).T, cache.fs, notch=cache.notch
+        x = np.asarray(signal, dtype=np.float64).T
+        # Con ``source='lr'`` la cache e' il file distribuito cosi' com'e':
+        # nessun notch, nessun ricampionamento, solo il cast a float32.
+        fresh = (
+            D.preprocess_record(x, cache.fs, notch=cache.notch)
+            if cache.source == "hr"
+            else x.astype(np.float32, copy=False)
         )
         worst = max(worst, float(np.abs(fresh - np.asarray(cache.array[pos])).max()))
     rep.check(worst == 0.0, f"{positions.size} record ricalcolati identici alla cache",
@@ -329,6 +335,9 @@ def main() -> int:
     ap.add_argument("--cache-dir", type=Path, default=REPO_ROOT / "data" / "cache")
     ap.add_argument("--no-notch", action="store_true",
                     help="disattiva il notch 50 Hz (Stage 0, analisi 8.3.4)")
+    ap.add_argument("--source", choices=("hr", "lr"), default="hr",
+                    help="'lr' legge records100 invece di ricampionare "
+                         "records500: solo a 100 Hz e senza notch (blocco 4, §8.3.2)")
     ap.add_argument("--limit", type=int, default=None,
                     help="usa solo i primi N record; scrive in una cartella _smoke")
     ap.add_argument("--overwrite", action="store_true")
@@ -370,8 +379,9 @@ def main() -> int:
         print(f"\nAvanti con la cache, ma {len(rep.failures)} controlli sui metadati "
               f"sono falliti: {', '.join(rep.failures)}", file=sys.stderr)
 
-    section(f"Costruzione cache — {args.fs} Hz, notch={notch}")
-    cache = D.SignalCache(args.root, cache_dir, meta, fs=args.fs, notch=notch)
+    section(f"Costruzione cache — {args.fs} Hz, notch={notch}, source={args.source}")
+    cache = D.SignalCache(args.root, cache_dir, meta, fs=args.fs, notch=notch,
+                          source=args.source)
     t0 = time.perf_counter()
     cache.build(overwrite=args.overwrite, progress=True)
     elapsed = time.perf_counter() - t0
@@ -382,7 +392,13 @@ def main() -> int:
     section("Validazione cache")
     check_cache(cache, meta, rep)
     check_recompute(args.root, cache, meta, rep)
-    check_alignment(args.root, cache_dir, meta, cache, rep)
+    if args.source == "hr":
+        check_alignment(args.root, cache_dir, meta, cache, rep)
+    else:
+        # ``records100`` non nasce da ``records500`` con i nostri filtri: non
+        # c'e' un allineamento da verificare, c'e' una differenza da misurare,
+        # e la misura e' l'analisi §8.3.2 (blocco 4), non un controllo qui.
+        rep.info("allineamento fra rate", "non applicabile con source='lr' (§8.3.2)")
     env_path = write_environment(cache)
     rep.info("ambiente registrato", str(env_path.name))
 

@@ -32,8 +32,8 @@ def main() -> None:
     if duplicates:
         print(f"  {len(duplicates)} configurazioni duplicate (§10 voce 14):")
         for key, rows in sorted(duplicates.items()):
-            fs, arm, notch, seed = key
-            label = f"fs{fs} {arm} notch{int(notch)} seed{seed}"
+            fs, arm, notch, source, seed = key
+            label = f"fs{fs} {arm} notch{int(notch)} {source} seed{seed}"
             print(f"    {label}: {', '.join(r.run_id for r in rows)}")
 
 

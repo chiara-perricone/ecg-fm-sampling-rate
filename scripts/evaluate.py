@@ -72,7 +72,9 @@ def main() -> int:
     out_dir = args.out_dir / run.run_id
 
     section(f"Valutazione {run.run_id} su fold 10")
-    info("configurazione", f"{run.fs} Hz, Arm {run.arm}, notch={run.notch}, seed={run.seed}")
+    info("configurazione",
+         f"{run.fs} Hz, Arm {run.arm}, notch={run.notch}, source={run.source}, "
+         f"seed={run.seed}")
     info("checkpoint", f"best-{criterion}.pt"
                        f"{'' if criterion == run.selection else '  (controfattuale)'}")
     info("device", args.device)
@@ -90,7 +92,9 @@ def main() -> int:
     splits = D.get_splits(meta)
     labels, label_names = D.load_label_matrix(args.root, meta)
     columns = clean_columns(label_names, FROZEN_LABELS)
-    cache = D.SignalCache(args.root, args.cache_dir, meta, fs=run.fs, notch=run.notch)
+    cache = D.SignalCache(
+        args.root, args.cache_dir, meta, fs=run.fs, notch=run.notch, source=run.source
+    )
     _ = cache.array
     scaler, scaler_path = resolve_scaler(
         run, args.root, args.cache_dir, meta, splits.train

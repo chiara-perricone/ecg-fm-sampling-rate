@@ -188,6 +188,7 @@ def _setup():
         fs=100,
         arm="A",
         notch=True,
+        source="hr",
         seed=0,
         selection="macro_clean",
     )

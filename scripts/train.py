@@ -92,7 +92,10 @@ def main() -> int:
 
     section(f"Run {run.run_id}")
     info("blocco", str(run.block))
-    info("configurazione", f"{run.fs} Hz, Arm {run.arm}, notch={run.notch}, seed={run.seed}")
+    info("configurazione",
+         f"{run.fs} Hz, Arm {run.arm}, notch={run.notch}, "
+         f"sorgente={'records500' if run.source == 'hr' else 'records100'}, "
+         f"seed={run.seed}")
     info("selezione del checkpoint", f"{run.selection} su fold 9")
     info("device", args.device)
     if smoke:
@@ -114,11 +117,14 @@ def main() -> int:
                    f"test {splits.test.size}")
     info("etichette", f"{labels.shape[1]} in tutto, {len(columns)} nel set congelato")
 
-    cache = D.SignalCache(args.root, args.cache_dir, meta, fs=run.fs, notch=run.notch)
+    cache = D.SignalCache(
+        args.root, args.cache_dir, meta, fs=run.fs, notch=run.notch, source=run.source
+    )
     if not cache.array_path.exists():
         print(f"cache assente: {cache.array_path}\n"
               f"costruirla con: python scripts/build_cache.py --fs {run.fs}"
-              f"{'' if run.notch else ' --no-notch'}", file=sys.stderr)
+              f"{'' if run.notch else ' --no-notch'}"
+              f"{'' if run.source == 'hr' else ' --source lr'}", file=sys.stderr)
         return 2
     _ = cache.array  # forza la verifica di coerenza dei metadati
     info("cache", f"{cache.array_path.name}")

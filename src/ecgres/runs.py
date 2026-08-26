@@ -18,6 +18,11 @@ per la metrica su cui si seleziona il checkpoint (§10 voce 13). Vengono allenat
 sono l'unica verifica end-to-end che il pipeline sia riproducibile, che e'
 l'assunzione su cui poggia l'uso di spot instance in §6.7. Vedi §10 voce 14.
 
+Il blocco 4 **non** e' un duplicato del 3, per quanto gli somigli: stesso rate,
+stesso braccio, stessa assenza di notch, ma segnale da ``records100`` invece che
+da ``records500`` ricampionato. E' per questo che ``source`` entra in
+``config_key``.
+
 Nessuna dipendenza da pandas, scipy o torch: la matrice deve essere ispezionabile
 ovunque, compreso un pod GPU appena creato.
 """
@@ -68,13 +73,19 @@ class RunSpec:
     fs: int
     arm: str
     notch: bool
+    source: str
     seed: int
     selection: str
 
     @property
-    def config_key(self) -> tuple[int, str, bool, int]:
-        """Cio' che determina i pesi. ``selection`` non ne fa parte."""
-        return (self.fs, self.arm, self.notch, self.seed)
+    def config_key(self) -> tuple[int, str, bool, str, int]:
+        """Cio' che determina i pesi. ``selection`` non ne fa parte.
+
+        ``source`` **si**: i blocchi 3 e 4 girano entrambi a 100 Hz, Arm A,
+        senza notch, e differiscono solo per la provenienza del segnale. Senza
+        questo campo verrebbero scambiati per configurazioni duplicate.
+        """
+        return (self.fs, self.arm, self.notch, self.source, self.seed)
 
 
 FIELD_NAMES: tuple[str, ...] = tuple(f.name for f in fields(RunSpec))
@@ -88,7 +99,8 @@ def enumerate_runs() -> tuple[RunSpec, ...]:
     """
     runs: list[RunSpec] = []
 
-    def add(block: int, fs: int, arm: str, notch: bool, seed: int, selection: str) -> None:
+    def add(block: int, fs: int, arm: str, notch: bool, seed: int, selection: str,
+            source: str = "hr") -> None:
         runs.append(
             RunSpec(
                 run_id=f"b{block}-fs{fs}-{arm}-n{int(notch)}-s{seed}",
@@ -96,6 +108,7 @@ def enumerate_runs() -> tuple[RunSpec, ...]:
                 fs=fs,
                 arm=arm,
                 notch=notch,
+                source=source,
                 seed=seed,
                 selection=selection,
             )
@@ -119,6 +132,12 @@ def enumerate_runs() -> tuple[RunSpec, ...]:
     # tre seed: e' voluto, vedi il docstring del modulo.
     for seed in SEEDS:
         add(3, 100, "A", False, seed, "macro_clean")
+
+    # Blocco 4 — 100 Hz da ``records100`` (§8.3.2, §10 voce 23). Si confronta
+    # col blocco 3, da cui differisce solo per la provenienza del segnale.
+    # Senza notch per forza: a 100 Hz la fondamentale di rete e' sul Nyquist.
+    for seed in SEEDS:
+        add(4, 100, "A", False, seed, "macro_clean", source="lr")
 
     return tuple(runs)
 
@@ -172,6 +191,7 @@ def load_runs(path: str | Path) -> tuple[RunSpec, ...]:
                 fs=int(row["fs"]),
                 arm=row["arm"],
                 notch=bool(int(row["notch"])),
+                source=row["source"],
                 seed=int(row["seed"]),
                 selection=row["selection"],
             )

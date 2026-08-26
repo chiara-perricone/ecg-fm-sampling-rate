@@ -73,6 +73,15 @@ def _grouping(analysis: str, runs) -> list[tuple[str, dict[str, list]]]:
         }
         return [("§8.3.4 — effetto del notch a 100 Hz", groups)]
 
+    if analysis == "source":
+        # Entrambi senza notch: records100 non puo' portarlo, la fondamentale
+        # di rete sta sul suo Nyquist. Differiscono solo per la provenienza.
+        groups = {
+            "records500 ricampionato": list(by_block.get(3, [])),
+            "records100": list(by_block.get(4, [])),
+        }
+        return [("§8.3.2 — provenienza del segnale a 100 Hz", groups)]
+
     raise ValueError(f"analisi non prevista: {analysis}")
 
 
@@ -89,7 +98,8 @@ def _paths(specs, out_dir: Path) -> tuple[list[Path], list[str]]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--analysis", choices=("rates", "arms", "notch"), default="rates")
+    ap.add_argument("--analysis", choices=("rates", "arms", "notch", "source"),
+                    default="rates")
     ap.add_argument("--runs-csv", type=Path, default=RUNS_CSV)
     ap.add_argument("--out-dir", type=Path, default=REPO_ROOT / "results" / "runs")
     ap.add_argument("--out", type=Path, default=None)
