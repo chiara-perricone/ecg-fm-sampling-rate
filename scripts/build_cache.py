@@ -67,7 +67,8 @@ def section(title: str) -> None:
 # Controlli
 # --------------------------------------------------------------------------
 
-def check_raw_sample(root: Path, meta: pd.DataFrame, rep: Report, n_probe: int = 40) -> None:
+def check_raw_sample(root: Path, meta: pd.DataFrame, rep: Report, n_probe: int = 40,
+                     source: str = "hr") -> None:
     """Legge un campione di record grezzi prima della passata lunga.
 
     Serve a far fallire in dieci secondi un percorso sbagliato o un file
@@ -83,25 +84,31 @@ def check_raw_sample(root: Path, meta: pd.DataFrame, rep: Report, n_probe: int =
         ])
     )
 
+    # Con ``source='lr'`` i file effettivamente letti sono ``records100``:
+    # controllare ``records500`` direbbe qualcosa di vero e irrilevante.
+    column = "filename_hr" if source == "hr" else "filename_lr"
+    raw_fs = D.SOURCE_FS if source == "hr" else 100
+    n_raw = raw_fs * int(D.RECORD_SECONDS)
+
     bad_shape, bad_nan, missing = [], [], []
     for pos in positions:
-        rel = meta["filename_hr"].iloc[pos]
+        rel = meta[column].iloc[pos]
         try:
             signal, fields = wfdb.rdsamp(str(root / rel))
         except Exception as exc:  # file mancante o header corrotto
             missing.append(f"{rel} ({type(exc).__name__})")
             continue
         x = np.asarray(signal, dtype=np.float64).T
-        if x.shape != (D.N_LEADS, D.SOURCE_FS * int(D.RECORD_SECONDS)):
+        if x.shape != (D.N_LEADS, n_raw):
             bad_shape.append(f"{rel} {x.shape}")
         if not np.isfinite(x).all():
             bad_nan.append(rel)
-        if fields.get("fs") != D.SOURCE_FS:
+        if fields.get("fs") != raw_fs:
             bad_shape.append(f"{rel} fs={fields.get('fs')}")
 
-    rep.check(not missing, f"{positions.size} record grezzi leggibili",
+    rep.check(not missing, f"{positions.size} record grezzi leggibili ({column})",
               "" if not missing else "; ".join(missing[:3]))
-    rep.check(not bad_shape, f"forma (12, 5000) e fs=500 sul campione",
+    rep.check(not bad_shape, f"forma (12, {n_raw}) e fs={raw_fs} sul campione",
               "" if not bad_shape else "; ".join(bad_shape[:3]))
     rep.check(not bad_nan, "nessun NaN/Inf nel campione grezzo",
               "" if not bad_nan else "; ".join(bad_nan[:3]))
@@ -369,7 +376,7 @@ def main() -> int:
     counts = check_labels(args.root, meta, rep)
 
     section("Campione di record grezzi")
-    check_raw_sample(args.root, meta, rep)
+    check_raw_sample(args.root, meta, rep, source=args.source)
     blocking = [f for f in rep.failures
                 if "record grezzi" in f or "forma" in f or "NaN" in f]
     if blocking:
@@ -402,7 +409,10 @@ def main() -> int:
     env_path = write_environment(cache)
     rep.info("ambiente registrato", str(env_path.name))
 
-    out = REPO_ROOT / "results" / f"label_support_from_cache_fs{args.fs}.csv"
+    # Senza suffisso: i conteggi vengono dai metadati, non dal segnale, quindi
+    # non dipendono ne' dal rate ne' dalla sorgente. Un file per cache sarebbe
+    # sei copie identiche che suggeriscono una dipendenza inesistente.
+    out = REPO_ROOT / "results" / "label_support_from_cache.csv"
     if not args.limit:
         out.parent.mkdir(exist_ok=True)
         counts.to_csv(out)

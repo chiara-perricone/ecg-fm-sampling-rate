@@ -304,6 +304,16 @@ reads `records500` at v1.0.3 (§2). The two numbers the paper sets side by side
 therefore rest on different signal provenance and different dataset versions.
 The gap between them is 0.0007.
 
+Measured here on PTB-XL v1.0.3, the two provenances agree on the bulk of the
+amplitude distribution and diverge in its tail: 306 records above 5 mV in
+`records100` against 319 for the same records resampled from `records500`, but
+one above 20 mV against fourteen, and none above 30 mV against six. The largest
+sample is 20.0 mV against 31.1 mV. Only records that saturate the int16
+converter at 32.767 mV produce the divergence, and the six largest under one
+provenance are disjoint from the six under the other, so which records count as
+extreme depends on the provenance too. Whether 0.0007 is small relative to that
+is what PROTOCOL §8.3.2 measures.
+
 **Normalisation.** `preprocess_signals` fits one `StandardScaler` on
 `np.vstack(X_train).flatten()[:, np.newaxis]`, and `apply_standardizer`
 transforms each record through `x.flatten()[:, np.newaxis]`

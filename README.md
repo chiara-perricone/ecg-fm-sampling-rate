@@ -68,15 +68,23 @@ I started this while preparing an application for a research position. The quest
 
 | Stage | State |
 | --- | --- |
-| Literature review | in progress |
-| Protocol registered | not yet |
-| Statistical machinery + tests | done |
-| Data pipeline | not started |
-| Multi-rate training runs | not started |
-| Analysis | not started |
+| Literature review | done — `RELATED_WORK.md`, findings verified against code and papers |
+| Protocol registered | done — `PROTOCOL.md`, 23 amendments, every one of them pre-run |
+| Data pipeline | done — PTB-XL v1.0.3 verified file-by-file against PhysioNet checksums |
+| Model, training, evaluation | done — resume-equals-uninterrupted verified, not assumed |
+| Run matrix | committed before execution — `configs/runs.csv`, 48 runs |
+| Analysis code | written and tested against synthetic predictions, before any real one exists |
+| Training runs | not started |
 
 **No results yet.** This table is updated as runs complete, including runs that
 do not support the hypothesis.
+
+The ordering above is the point rather than an accident. The protocol, the run
+matrix and the analysis are all committed before the data they will be applied
+to exists, so that no choice among them can have been made by looking at an
+answer. §10 of `PROTOCOL.md` records every amendment with its date and reason,
+including the two that turned out to be wrong and the one that withdrew a cost
+this work had assumed against itself.
 
 ## Design notes
 
