@@ -100,6 +100,29 @@ So the spread — 100, 240, 250 and 500 Hz, a factor of five between HuBERT-ECG
 and ECGFounder — is real, is not an artefact of one team's pipeline (§4), and is
 not visible to a reader of the publication.
 
+**The resampling is stated not to occur.** §3.3 says that "all models use the
+standard 12 ECG leads without additional resampling or filtering"
+**[paper: §3.3]**. The configuration says otherwise: `ptbxl_all` is loaded from
+`.../ptb-xl/records500` with `--fs-data 500`, while nine of the ten models
+declare an `--fs-model` other than 500 **[code: `run.sh`]**. Signals must
+therefore be resampled from 500 Hz to 100, 240 or 250 Hz for nine of the ten
+entries in the ranking, and the sentence a reader would rely on says they are
+not. The charitable reading — that "additional" means "beyond what the pipeline
+performs natively" — is probably the intended one, in which case the wording is
+unfortunate rather than incorrect. Either way the operation whose effect this
+repository measures is one that a careful reader of the paper would conclude had
+not been performed.
+
+**The split is not described either.** The word "fold" does not appear in the
+paper or its appendices, and no split ratio or procedure is given for PTB-XL;
+§3.3 states only that model selection uses the validation set and that
+uncertainty comes from bootstrapping the test set with n = 1000
+**[paper: §3.3]**. The official stratified folds are the standard convention for
+this dataset and the underlying `clinical_ts` code uses them, so the reader can
+infer the split with reasonable confidence — but only by inference. This
+repository uses folds 1–8 / 9 / 10 and records that correspondence as an
+assumption rather than a verified match (PROTOCOL §10, entry 18).
+
 ## 3. The authors know sampling rate is not neutral
 
 This is the strongest evidence in this document, and it comes from the benchmark
@@ -265,6 +288,42 @@ ECG-JEPA runs with eight input channels, every other model with twelve
 **[code: `run.sh`]**; BenchECG hardcodes the same eight-lead subset
 **[code: `bench_xecg/config.py:60`]**. A third factor that varies with the
 architecture.
+
+### 5.5 The 0.9417 lineage, and what the older pipeline actually does
+
+The Reality Check places its own 0.941 beside 0.9417 from Mehari & Strodthoff
+**[paper: §4.1]**. That second figure comes from
+`helme/ecg_ptbxl_benchmarking`, which is GPL-3.0 and was therefore inspected and
+not reused. Three properties of it are worth recording.
+
+**Signal source at 100 Hz.** `load_raw_data_ptbxl` reads `df.filename_lr`, i.e.
+the distributed `records100`, when `sampling_rate == 100`
+**[code: `code/utils/utils.py`]**, and `get_datasets.sh` fetches PTB-XL v1.0.1
+**[code: `get_datasets.sh`]**. The Reality Check's own pipeline does neither: it
+reads `records500` at v1.0.3 (§2). The two numbers the paper sets side by side
+therefore rest on different signal provenance and different dataset versions.
+The gap between them is 0.0007.
+
+**Normalisation.** `preprocess_signals` fits one `StandardScaler` on
+`np.vstack(X_train).flatten()[:, np.newaxis]`, and `apply_standardizer`
+transforms each record through `x.flatten()[:, np.newaxis]`
+**[code: `code/utils/utils.py`]**. A single scalar mean and standard deviation,
+shared across all twelve leads and all timesteps, fitted on the training folds
+over whole records before any chunking. This is what PROTOCOL §10 entries 7 and
+12 replicate; both were written from this file and are now verified against it
+rather than asserted.
+
+**Undefined labels.** `evaluate_experiment` calls
+`roc_auc_score(y_true, y_pred, average='macro')` over all label columns, and
+`get_appropriate_bootstrap_samples` draws resamples in a loop, discarding any in
+which some label has no positive example **[code: `code/utils/utils.py`]**.
+Undefined columns are thus avoided by restricting the resample space rather than
+dropped from the average. The published intervals are correspondingly
+conditional on resamples in which every label is represented, which is not the
+unconditional sampling distribution. This repository takes the other route —
+drop the undefined column from that replicate and report how often it happens
+(PROTOCOL §7) — and the difference is recorded rather than treated as
+equivalent.
 
 ## 6. Other work
 

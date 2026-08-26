@@ -102,8 +102,11 @@ def main() -> int:
         return 0
     print("  RIPRODUZIONE NON ACCETTATA.")
     print("  §3: il lavoro si ferma e il fallimento va scritto.")
-    print("  Se il fallimento e' stretto, esaminare nell'ordine le voci §10 "
-          "numero 4, 5 e 11.")
+    print("  Se il fallimento e' stretto, restano due soli candidati: la voce")
+    print("  §10 numero 11 (stride dei crop di training) e la 18 (i fold non")
+    print("  sono dichiarati dal paper). Le voci 4 e 5 sono state ritirate")
+    print("  dalle 16 e 17: versione del dataset e provenienza del segnale")
+    print("  coincidono con quelle del riferimento.")
     return 1
 
 
