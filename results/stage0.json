@@ -1,0 +1,28 @@
+{
+  "accepted": true,
+  "bootstrap_seed": 0,
+  "ci": [
+    0.929855571507201,
+    0.9437856946374246
+  ],
+  "ci_contains_target": true,
+  "difference": -0.003652112215311254,
+  "git_sha": "bd6e312937df0e367e19d67973235551a74f73cb",
+  "n_boot": 10000,
+  "per_run": {
+    "b0-fs100-A-n0-s0": 0.9351450449862322,
+    "b0-fs100-A-n0-s1": 0.9377336435567709,
+    "b0-fs100-A-n0-s2": 0.9391649748110628
+  },
+  "point": 0.9373478877846887,
+  "point_within_tolerance": true,
+  "run_ids": [
+    "b0-fs100-A-n0-s0",
+    "b0-fs100-A-n0-s1",
+    "b0-fs100-A-n0-s2"
+  ],
+  "seed_spread": 0.00401992982483057,
+  "seed_std": 0.002037538855067969,
+  "target": 0.941,
+  "tolerance": 0.01
+}

@@ -29,3 +29,9 @@ results/**/raw/
 data/
 *.zip
 .venv/
+# The per-record predictions are the input to scripts/analyse.py, so they are
+# tracked despite the blanket *.npz rule above: about 600 KB per run and some
+# 60 MB for all 48. Without them results/ cannot be re-analysed off the pod,
+# which is the one thing step 8 of the runbook exists to guarantee.
+!results/**/*.npz
+!results/*.npz

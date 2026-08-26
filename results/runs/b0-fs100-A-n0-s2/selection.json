@@ -1,0 +1,14 @@
+{
+  "best_epoch_per_metric": {
+    "macro_all": 37,
+    "macro_clean": 32
+  },
+  "criteria_agree": false,
+  "run_id": "b0-fs100-A-n0-s2",
+  "selected_epoch": 37,
+  "selection": "macro_all",
+  "value_at_selected_epoch": {
+    "macro_all": 0.9355603241417931,
+    "macro_clean": 0.9433140599868888
+  }
+}
