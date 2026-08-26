@@ -88,16 +88,36 @@ optimistic.
 ```bash
 python -c "import ecgres.vendor.s4"      # note which Cauchy backend it reports
 pip install pykeops                      # then check again
-python scripts/train.py --run-id b0-fs100-A-n0-s0 --epochs 1
-python scripts/train.py --run-id b1-fs500-A-n1-s0 --epochs 1
+python scripts/train.py --run-id b0-fs100-A-n0-s0 --epochs 1 --deterministic
+python scripts/train.py --run-id b1-fs500-A-n1-s0 --epochs 1 --deterministic
 ```
+
+`--deterministic` and the absence of `--tf32` are §10 entry 25, and they are
+settled here rather than later because the fingerprint will refuse to resume
+across a change in either. If the first command raises instead of training,
+`torch` is naming an operation S4 needs that has no deterministic CUDA
+implementation: record the operation, drop the flag from **every** run including
+these two, and note it as the branch entry 25 pre-specified. Do not keep the flag
+for some blocks and not others.
 
 The two cheapest and most expensive rates bracket the whole matrix: sequence
 length is 250 samples at 100 Hz and 1250 at 500 Hz, and cost scales with it.
 
-**Check:** seconds per epoch at both rates. Multiply by 100 epochs and by the
-number of runs at each rate — 8 runs at 100 Hz, 5 at 240, 5 at 250, 10 at 500,
-plus blocks 0, 3 and 4 at 100 Hz — and compare against the €40 ceiling of §6.7.
+**Check:** seconds per epoch at both rates, then
+
+    total ≈ 100 × (18·t₁₀₀ + 10·t₂₄₀ + 10·t₂₅₀ + 10·t₅₀₀)
+
+against the €40 ceiling of §6.7. The counts are the ones in `configs/runs.csv`,
+which is the only place they should ever be read from: 18 runs at 100 Hz — 5 in
+the comparison arms plus all of blocks 0, 3 and 4 — and 10 at each of 240, 250
+and 500 Hz.
+
+`t₂₄₀` and `t₂₅₀` are interpolated between the two measured endpoints rather than
+scaled from one of them. Cost grows with sequence length but not necessarily in
+proportion to it: at 250 samples a 4090 is nowhere near saturated, so the short
+end is dominated by per-step overhead and the linear rule overstates the cheap
+rates and understates the expensive one. Measuring both ends is what removes the
+assumption; that is why the probe is two epochs and not one.
 
 Those two epochs are not throwaway. They are epoch 0 of two real runs, and the
 rest resumes from them, provided the numerical settings do not change in
@@ -117,7 +137,9 @@ mix two arithmetics.
    comparability with the 0.941 of §3. Either would be a §10 entry with its own
    justification, and neither should be reached for before the first two.
 
-Record the chosen numerical settings as a §10 entry before the runs, not after.
+The chosen numerical settings are §10 entry 25, written before the runs rather
+than after. The only thing this step can still discover is that the deterministic
+branch of that entry has to be taken.
 
 ---
 
@@ -125,8 +147,8 @@ Record the chosen numerical settings as a §10 entry before the runs, not after.
 
 ```bash
 for s in 0 1 2; do
-  python scripts/train.py    --run-id b0-fs100-A-n0-s$s
-  python scripts/evaluate.py --run-id b0-fs100-A-n0-s$s
+  python scripts/train.py    --run-id b0-fs100-A-n0-s$s --deterministic
+  python scripts/evaluate.py --run-id b0-fs100-A-n0-s$s --deterministic
 done
 python scripts/stage0.py
 ```
@@ -152,7 +174,8 @@ for row in csv.DictReader(open("configs/runs.csv")):
     if row["block"] == "0":
         continue
     for step in ("train", "evaluate"):
-        subprocess.run(["python", f"scripts/{step}.py", "--run-id", row["run_id"]], check=True)
+        subprocess.run(["python", f"scripts/{step}.py",
+                        "--run-id", row["run_id"], "--deterministic"], check=True)
 PY
 ```
 
