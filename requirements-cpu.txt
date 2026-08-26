@@ -1,0 +1,16 @@
+# Everything in requirements.txt, plus a CPU build of torch.
+#
+# This is the laptop environment: it builds and validates the caches, runs the
+# test suite and runs the analysis of RUNBOOK step 7, none of which needs a GPU.
+# It cannot train at any useful speed and is not meant to.
+#
+# torch is not pinned in requirements.txt because a local version label such as
+# `+cpu` or `+cu130` exists only on download.pytorch.org, never on PyPI. A bare
+# `pip install -r requirements.txt` carrying such a pin fails to resolve rather
+# than falling back, which on a metered machine is a failure at the first
+# command. The variant therefore lives here, with the index that serves it.
+
+-r requirements.txt
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.13.0+cpu

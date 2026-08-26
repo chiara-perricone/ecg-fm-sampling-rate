@@ -23,9 +23,16 @@ be, because none of it needs a GPU and all of it can fail.
   checkpoints.
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-cpu.txt
 pytest -q                      # expect: all green, no skips other than optional deps
 ```
+
+`requirements.txt` holds everything except torch and is not installed directly.
+The torch build is platform-specific — `requirements-cpu.txt` here,
+`requirements-cuda.txt` on the pod — because a `+cpu` or `+cu130` pin resolves
+only against `download.pytorch.org` and fails outright anywhere else. Both
+wrapper files pin the same torch version; if the pod forces that version to
+change, both change together.
 
 ---
 
@@ -73,8 +80,29 @@ An RTX 4090-class card with strong fp32 throughput, about €0.35/h on Vast.ai o
 RunPod, 30 GB of volume. Persistent storage, so an interrupted session does not
 lose the caches.
 
-Repeat steps 0 to 2 on the pod. **The caches are rebuilt there rather than
-copied**, so that every signal the models see was produced by one environment.
+Repeat steps 0 to 2 on the pod, with `requirements-cuda.txt` in place of
+`requirements-cpu.txt`. **The caches are rebuilt there rather than copied**, so
+that every signal the models see was produced by one environment.
+
+Two things to establish before installing anything, in this order, because both
+can send you back to a different pod:
+
+```bash
+nvidia-smi          # "CUDA Version" here is the driver ceiling, not the install
+nvcc --version      # the toolkit in the image; pykeops compiles against this
+```
+
+torch 2.13.0 is published for cu130 only, so the driver has to support CUDA 13.0.
+The `runpod/pytorch:*-cu1281-*` image ships an nvcc from 12.8, one major version
+below the runtime that wheel bundles, which is the kind of mismatch that makes
+pykeops fail to build — and pykeops is the largest single speed lever in step 4.
+Either find an image whose toolkit matches, or take the fallback recorded in
+`requirements-cuda.txt`: torch 2.11.0 on cu128, in both wrapper files, verified
+by `pytest -q`.
+
+A stopped pod still bills for its volume disk, and a network volume bills while
+nothing is running at all. Size the disk to about 40 GB rather than accepting the
+default, and delete the volume after step 8 rather than merely stopping the pod.
 
 ---
 
