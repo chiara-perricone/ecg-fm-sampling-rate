@@ -209,10 +209,28 @@ and that is a publishable answer.
 
 ### 6.5 Fixed across all runs
 
+*Model selection disambiguated 2026-08-26; see §7 and §10.*
+
 Optimiser AdamW, learning rate 1e-3, weight decay 1e-3, batch size 64, 100
-epochs, model selection on fold 9 by macro AUROC, loss binary cross-entropy —
-all following arXiv:2509.25095v2, §3.3. Layer-dependent learning rates are not
-used, since the S4 baseline there is trained from scratch rather than finetuned.
+epochs, loss binary cross-entropy — all following arXiv:2509.25095v2, §3.3.
+Layer-dependent learning rates are not used, since the S4 baseline there is
+trained from scratch rather than finetuned.
+
+**Model selection** is on fold 9, by the macro AUROC that is the endpoint of the
+stage: `macro_all` for the blocking reproduction of §3, `macro_clean` for the
+rate comparison of §8.1–§8.2. The checkpoint kept is the epoch maximising that
+criterion. Checkpoints are additionally written every epoch, for interruption
+recovery, which is a separate concern from selection.
+
+Fold 9 is evaluated exactly as fold 10 is: the four non-overlapping 2.5 s crops
+tiling the record, predictions averaged per record. The selection criterion and
+the reported metric are therefore the same quantity computed on different folds,
+not two differently constructed estimates.
+
+**Both** macro AUROCs are computed on fold 9 at every epoch of every run and
+written to the run history, together with the epoch each criterion would have
+selected. How often the two disagree is then a measured quantity rather than an
+assumption.
 
 ### 6.6 Mains filtering
 
@@ -426,9 +444,9 @@ readable. All entries below predate any training run. Entries 1–3 follow from
 descriptive analysis of the inputs (§5.1); entries 4–8 from validation of the
 data pipeline against the full dataset, from inspection of the reference
 implementations, and from design decisions taken while implementing the loader;
-entries 9–12 from reading the vendored S4 layer and the reference training
+entries 9–13 from reading the vendored S4 layer and the reference training
 wrapper line by line, and from design decisions taken while implementing the
-model and the normalisation. None follows from any result.
+model, the normalisation and the training loop. None follows from any result.
 
 | # | Date | Section | Change | Reason |
 |---|---|---|---|---|
@@ -444,3 +462,4 @@ model and the normalisation. None follows from any result.
 | 10 | 2026-08-26 | §6 | The S4 layer is vendored from `HazyResearch/state-spaces` commit 137e49d (Apache-2.0), not reimplemented from scratch. | Provenance verified rather than assumed: the copy in `tmehari/ssm_ecg` (MIT, same group as the Reality Check) differs from upstream commit 2bb0858 by 17 lines, all identifiable as a URL comment, a torch version-check fix, and their own `# MODIFIED` rate passthrough. Commit 137e49d was chosen over 2bb0858 because it adds a CPU fallback for the Cauchy kernel and fixes the `torch.__version__.startswith('1.10')` check, which is wrong under torch 2.x. Diffing 2bb0858 against 137e49d, excluding the Cauchy backend and version-check plumbing, leaves only a docstring and a reordering: `dt_min`, `dt_max`, `resample`, `self.rate` and `dt = exp(log_dt) * rate` are line-for-line identical, so the model mathematics is unchanged. `helme/ecg_ptbxl_benchmarking` is GPL-3.0 and therefore excluded from reuse in this MIT repository; `AI4HealthUOL/ecg-fm-benchmarking` carries no licence at all. Only modification to the vendored file: the `pytorch_lightning` import replaced by a no-op, verified line-by-line against upstream. |
 | 11 | 2026-08-26 | §6 | Training crops are drawn at random on the 0.1 s grid, not enumerated deterministically at stride `input_size // 4` as in the reference. | `ecg_dataset_wrapper.py` sets `stride_length_train = chunk_length_train // 4`, giving ~13 overlapping deterministic crops per record. Integer division breaks cross-arm alignment: `250 // 4 = 62` is 0.620 s while `1250 // 4 = 312` is 0.624 s, so arms would see physically different windows — the confound this design exists to exclude. Random crops on the 0.1 s grid preserve the pairing on which the paired bootstrap of §8.1 depends. Note that inference crops do coincide with the reference: `stride_valid = input_size`, four non-overlapping windows, predictions averaged. Third candidate explanation if Stage 0 fails narrowly, after entries 4 and 5. |
 | 12 | 2026-08-26 | §6 | The scaler of entries 7–8 is fitted on the **full 10 s records** of folds 1–8, not on the training crops the model actually sees. | Entries 7 and 8 fix what the scaler is (one global scalar pair) and where it is fitted (folds 1–8, 500 Hz, once), but not the unit of observation, and the two candidates are not equivalent under entry 11. Training crops are now drawn at random per epoch, so a scaler fitted on them would be a function of the seed and of the epoch schedule: each of the 43 runs would normalise by slightly different constants, which is precisely what entry 8 exists to prevent — the comparison across rates would then rest on constants chosen per cell rather than shared. The reference pipeline also standardises whole records, before chunking. Cost acknowledged: random crops on the 0.1 s grid do not sample record positions uniformly (a 2.5 s window starting anywhere in 0–7.5 s covers the middle of the record more often than the edges), so the training-window distribution is not exactly the record distribution and the fitted constants are, strictly, those of a slightly different population. Two reasons this is accepted: within a 10 s resting ECG the signal is close to stationary, so a global scalar mean and standard deviation are nearly position-independent; and at inference the four crops tile the record exactly (entry 11), so there the two populations coincide by construction. The fitted pair is serialised with the fitting rate, the folds, the record count and a fingerprint of the record order, so the population behind the constants is recoverable after the fact. Verified pre-run in `test_scaler_is_global_not_per_lead`, `test_scaler_fit_uses_only_the_selected_records` and `test_fit_from_cache_refuses_other_rates`. |
+| 13 | 2026-08-26 | §6.5 | Model selection disambiguated: the checkpoint is chosen on fold 9 by the macro AUROC that is the endpoint of the stage — `macro_all` for the §3 reproduction, `macro_clean` for the §8.1–§8.2 comparison. Both are computed every epoch of every run and recorded, together with the epoch each criterion would have selected. Fold 9 is evaluated with the same four-crop aggregation used on fold 10. | §6.5 read "model selection on fold 9 by macro AUROC". That was unambiguous while there was one macro AUROC and stopped being so with entry 1. Left unresolved, the choice would have been made in effect by whichever metric the training code happened to compute first. `macro_all` is kept for Stage 0 because the reference selects on the macro over the full label set and the published 0.941 was produced that way; the blocking condition already carries three candidate explanations for a narrow failure (entries 4, 5, 11), and a fourth of our own making would leave a failure close to uninterpretable. `macro_clean` is used for the comparison because `macro_all` is a noisy *selection* criterion for exactly the reason it was rejected as an *endpoint*: 22 of 71 labels sit below ten positives and fold 9 is the size of fold 10, so roughly a third of the criterion carries very large sampling variance. Taking the maximum over 100 epochs of a noisy quantity both biases the selected value upward and makes the argmax close to arbitrary among near-tied epochs; that arbitrariness enters each run as an independent noise term, widening both the paired bootstrap intervals of §8.1 and the between-seed spread of §6.4 — which is the resolution this design exists to buy. Objection considered and rejected: selecting on `macro_clean` makes the stopping point depend on a label set defined by support in fold 10, the test fold. The information that crossed from fold 10 is the list of labels with at least ten positives, computed once, frozen and committed before any training run (§7); reusing that same list does not spend more of it, and no model output on fold 10 enters selection at any point. Cost acknowledged: two selection rules instead of one, so the comparison arms are selected differently from the Stage 0 run against which the pipeline is validated. Recorded here rather than smoothed over, and made auditable by logging both criteria for every epoch of every run. |
