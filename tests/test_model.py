@@ -416,3 +416,173 @@ def test_to_index_rejects_off_grid():
         CropSampler.to_index(0.05, 100)
     with pytest.raises(ValueError):
         CropSampler.to_index(0.33, 500)
+
+
+def test_to_index_agrees_with_data_grid_index():
+    """Vincola la duplicazione dichiarata nel docstring di ``to_index``.
+
+    ``model`` non importa ``data`` per restare utilizzabile senza pandas e
+    scipy, quindi la conversione secondi -> campioni esiste in due copie. Se
+    divergono, i bracci smettono di guardare lo stesso istante fisico e nessun
+    altro test se ne accorge.
+    """
+    pytest.importorskip("pandas")
+    pytest.importorskip("scipy")
+    from ecgres.data import crop_start_grid, grid_index
+
+    for t in crop_start_grid():
+        for fs in RATES:
+            assert CropSampler.to_index(t, fs) == grid_index(t, fs)
+    for bad in (0.05, 0.123, 0.33):
+        with pytest.raises(ValueError):
+            CropSampler.to_index(bad, 500)
+        with pytest.raises(ValueError):
+            grid_index(bad, 500)
+
+
+# --------------------------------------------------------------------------- #
+# WindowDataset
+# --------------------------------------------------------------------------- #
+
+
+class _FakeWindowCache:
+    """Cache finta che codifica nel segnale *quale* finestra e' stata chiesta.
+
+    Il valore costante ``record_id + start_s`` permette a un test di verificare
+    la finestra restituita, non solo la sua forma. ``calls`` registra le
+    richieste, cosi' due bracci possono essere confrontati sugli istanti in
+    secondi invece che sui campioni.
+    """
+
+    def __init__(self, fs: int, n_records: int = 6):
+        self.fs = fs
+        self.n_records = n_records
+        self.calls: list[tuple[int, float]] = []
+
+    def __len__(self):
+        return self.n_records
+
+    def window(self, record_idx, start_s, *, window_seconds=2.5):
+        self.calls.append((int(record_idx), float(start_s)))
+        n = int(round(window_seconds * self.fs))
+        return np.full((12, n), record_idx + start_s, dtype=np.float32)
+
+
+N_FAKE = 6
+N_CLASSES = 3
+
+
+def _labels(seed=1):
+    rng = np.random.default_rng(seed)
+    return rng.integers(0, 2, size=(N_FAKE, N_CLASSES)).astype(np.uint8)
+
+
+def _dataset(fs=100, train=True, record_ids=(0, 1, 2, 3), scaler=None, cache=None):
+    from ecgres.model import WindowDataset
+
+    cache = cache or _FakeWindowCache(fs)
+    cfg = ModelConfig(fs=fs, arm="A", n_classes=N_CLASSES, d_model=16, n_layers=1)
+    return WindowDataset(
+        cache=cache,
+        record_ids=list(record_ids),
+        labels=_labels(),
+        scaler=scaler or GlobalScaler(0.0, 1.0),
+        cfg=cfg,
+        train=train,
+        sampler=CropSampler(seed=SEED) if train else None,
+    )
+
+
+def test_dataset_train_lengths_and_shapes():
+    ds = _dataset(train=True)
+    assert len(ds) == 4
+    x, y, rec = ds[0]
+    assert x.shape == (12, 250)
+    assert x.dtype == torch.float32 and y.dtype == torch.float32
+    assert y.shape == (N_CLASSES,)
+    assert rec == 0
+
+
+def test_dataset_eval_is_record_major():
+    """Ordine record-esterno / crop-interno, come ``inference_batch``.
+
+    Chi media le 4 predizioni a valle fa reshape ``(-1, 4)`` e si fida di questo.
+    """
+    ds = _dataset(train=False)
+    assert len(ds) == 4 * len(INFERENCE_CROP_STARTS_S)
+    got = [ds.start_seconds(i) for i in range(len(ds))]
+    assert [r for r, _ in got[:4]] == [0, 0, 0, 0]
+    assert [t for _, t in got[:4]] == list(INFERENCE_CROP_STARTS_S)
+    assert [r for r, _ in got[4:8]] == [1, 1, 1, 1]
+
+
+def test_dataset_applies_the_scaler():
+    """La finestra finta vale ``record + start``: la verifica e' esatta."""
+    ds = _dataset(train=False, scaler=GlobalScaler(2.0, 4.0))
+    x, _, _ = ds[1]  # record 0, start 2.5 -> valore grezzo 2.5
+    assert torch.allclose(x, torch.full_like(x, (2.5 - 2.0) / 4.0))
+
+
+def test_dataset_labels_are_indexed_by_record_not_by_position():
+    """``record_ids`` non parte da zero: e' il caso in cui una rimappatura
+    sbagliata passerebbe inosservata su train e non su test."""
+    labels = _labels()
+    ds = _dataset(train=True, record_ids=(5, 3))
+    _, y, rec = ds[0]
+    assert rec == 5
+    assert torch.equal(y, torch.tensor(labels[5], dtype=torch.float32))
+
+
+def test_dataset_crops_move_with_the_epoch():
+    ds = _dataset(train=True)
+    first = [ds.start_seconds(i)[1] for i in range(len(ds))]
+    ds.set_epoch(1)
+    assert [ds.start_seconds(i)[1] for i in range(len(ds))] != first
+
+
+def test_dataset_asks_the_same_seconds_at_every_rate():
+    """Il cuore del disegno: cambiando fs cambia solo la lunghezza."""
+    per_rate = {}
+    for fs in RATES:
+        cache = _FakeWindowCache(fs)
+        ds = _dataset(fs=fs, train=True, cache=cache)
+        lengths = {ds[i][0].shape[-1] for i in range(len(ds))}
+        per_rate[fs] = ([t for _, t in cache.calls], lengths)
+    starts = {fs: tuple(v[0]) for fs, v in per_rate.items()}
+    assert len(set(starts.values())) == 1, starts
+    assert [sorted(per_rate[fs][1])[0] for fs in RATES] == [250, 600, 625, 1250]
+
+
+def test_dataset_rejects_inconsistent_inputs():
+    from ecgres.model import WindowDataset
+
+    cfg = ModelConfig(fs=100, arm="A", n_classes=N_CLASSES, d_model=16, n_layers=1)
+    common = dict(
+        record_ids=[0, 1],
+        scaler=GlobalScaler(0.0, 1.0),
+        train=True,
+        sampler=CropSampler(seed=SEED),
+    )
+    with pytest.raises(ValueError, match="Hz"):  # cache e config a rate diversi
+        WindowDataset(cache=_FakeWindowCache(500), labels=_labels(), cfg=cfg, **common)
+    with pytest.raises(ValueError, match="CropSampler"):
+        WindowDataset(
+            cache=_FakeWindowCache(100),
+            record_ids=[0, 1],
+            labels=_labels(),
+            scaler=GlobalScaler(0.0, 1.0),
+            cfg=cfg,
+            train=True,
+            sampler=None,
+        )
+    with pytest.raises(ValueError, match="righe"):  # etichette disallineate
+        WindowDataset(
+            cache=_FakeWindowCache(100), labels=_labels()[:2], cfg=cfg, **common
+        )
+    with pytest.raises(ValueError, match="colonne"):
+        WindowDataset(
+            cache=_FakeWindowCache(100),
+            labels=np.zeros((N_FAKE, N_CLASSES + 1), dtype=np.uint8),
+            cfg=cfg,
+            **common,
+        )

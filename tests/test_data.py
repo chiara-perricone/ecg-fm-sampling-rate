@@ -284,6 +284,47 @@ def test_crop_past_record_end_raises(cache_100):
         cache_100.crop([0], [8.0])
 
 
+def test_grid_index_rejects_on_sample_but_off_grid():
+    """0,05 s da' 5 a 100 Hz e 12 a 240 Hz, ma 12,5 a 250 Hz.
+
+    E' il caso che distingue le due condizioni: essere un campione intero a
+    *questo* rate non basta, serve esserlo a tutti e quattro insieme.
+    """
+    assert 0.05 * 100 == 5 and 0.05 * 240 == 12  # integro a due rate su quattro
+    for fs in D.RATES:
+        with pytest.raises(ValueError, match="griglia"):
+            D.grid_index(0.05, fs)
+
+
+def test_grid_index_is_exact_on_the_grid():
+    for t in D.crop_start_grid():
+        for fs in D.RATES:
+            assert D.grid_index(t, fs) / fs == pytest.approx(t, abs=1e-12)
+
+
+def test_window_matches_crop(cache_100):
+    """``crop`` e' un ciclo su ``window``: i due percorsi non devono divergere."""
+    for start in (0.0, 2.5, 7.5):
+        one = cache_100.window(1, start)
+        many = cache_100.crop([1], [start]).signals[0]
+        assert one.dtype == np.float32
+        assert np.array_equal(one, many)
+
+
+def test_window_returns_a_copy_not_a_view(cache_100):
+    """Chi consuma la finestra la normalizza: una vista scriverebbe sulla cache."""
+    x = cache_100.window(0, 0.0)
+    x[:] = -999.0
+    assert not np.array_equal(cache_100.window(0, 0.0), x)
+
+
+def test_window_rejects_off_grid_and_past_end(cache_100):
+    with pytest.raises(ValueError, match="griglia"):
+        cache_100.window(0, 0.123)
+    with pytest.raises(ValueError, match="fuori dal record"):
+        cache_100.window(0, 8.0)
+
+
 def test_inference_batch_layout(cache_100):
     batch = cache_100.inference_batch([0, 1, 2])
     assert batch.signals.shape == (12, D.N_LEADS, 250)

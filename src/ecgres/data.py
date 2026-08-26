@@ -59,6 +59,7 @@ __all__ = [
     "resample_to",
     "preprocess_record",
     "n_samples_for",
+    "grid_index",
     "crop_start_grid",
     "inference_crop_starts",
     "SignalCache",
@@ -268,6 +269,32 @@ def n_samples_for(seconds: float, fs: int) -> int:
     return n
 
 
+def grid_index(start_s: float, fs: int) -> int:
+    """Indice campione di ``start_s``, con due controlli **in quest'ordine**.
+
+    Prima la griglia a ``CROP_GRID_SECONDS``, poi l'integralita' dell'indice a
+    ``fs``. Sono condizioni diverse e la prima e' piu' forte: 0,05 s da' un
+    indice intero a 100 Hz (5) e a 240 Hz (12), ma non a 250 Hz (12,5). Solo la
+    griglia garantisce tutti e quattro i rate **insieme**, che e' l'invariante
+    su cui poggia il confronto accoppiato.
+
+    E' l'unico punto in cui i secondi diventano campioni: la conversione non va
+    replicata a valle.
+    """
+    k = start_s / CROP_GRID_SECONDS
+    if abs(k - round(k)) > 1e-9:
+        raise ValueError(
+            f"start {start_s} s non cade sulla griglia da {CROP_GRID_SECONDS} s"
+        )
+    exact = start_s * fs
+    idx = round(exact)
+    if abs(exact - idx) > 1e-9:
+        raise ValueError(
+            f"start {start_s} s non cade su un campione intero a {fs} Hz"
+        )
+    return int(idx)
+
+
 def crop_start_grid(
     *,
     window_seconds: float = WINDOW_SECONDS,
@@ -475,6 +502,33 @@ class SignalCache:
             self._array = np.load(self.array_path, mmap_mode="r")
         return self._array
 
+    def window(
+        self,
+        record_idx: int,
+        start_s: float,
+        *,
+        window_seconds: float = WINDOW_SECONDS,
+    ) -> np.ndarray:
+        """Una singola finestra ``(N_LEADS, n_campioni)``, in ``float32``.
+
+        E' l'accesso elementare alla cache: ``crop`` e' un ciclo su questo.
+        Prende l'istante in **secondi**, non in campioni, perche' i secondi sono
+        la coordinata condivisa fra i bracci; la conversione avviene qui, una
+        volta sola, in ``grid_index``.
+
+        Restituisce una **copia**, non una vista sul memmap: chi consuma la
+        finestra la normalizza subito dopo, e una vista scriverebbe sulla cache.
+        """
+        width = n_samples_for(window_seconds, self.fs)
+        begin = grid_index(start_s, self.fs)
+        if begin < 0 or begin + width > self.n_record_samples:
+            raise ValueError(
+                f"finestra fuori dal record: start {start_s} s a {self.fs} Hz"
+            )
+        return np.array(
+            self.array[record_idx, :, begin : begin + width], dtype=np.float32
+        )
+
     def crop(self, record_idx: Sequence[int] | np.ndarray, start_s: Sequence[float] | np.ndarray,
              *, window_seconds: float = WINDOW_SECONDS) -> WindowBatch:
         """Estrae una finestra per ciascuna coppia ``(record_idx, start_s)``."""
@@ -486,10 +540,7 @@ class SignalCache:
         width = n_samples_for(window_seconds, self.fs)
         out = np.empty((record_idx.size, N_LEADS, width), dtype=np.float32)
         for i, (r, t) in enumerate(zip(record_idx, start_s)):
-            begin = _grid_index(t, self.fs)
-            if begin < 0 or begin + width > self.n_record_samples:
-                raise ValueError(f"finestra fuori dal record: start {t} s a {self.fs} Hz")
-            out[i] = self.array[r, :, begin : begin + width]
+            out[i] = self.window(int(r), float(t), window_seconds=window_seconds)
         return WindowBatch(
             fs=self.fs,
             signals=out,
@@ -517,18 +568,6 @@ class SignalCache:
         grid = crop_start_grid()
         starts = rng.choice(grid, size=record_idx.size, replace=True)
         return self.crop(record_idx, starts)
-
-
-def _grid_index(start_s: float, fs: int) -> int:
-    """Indice campione di ``start_s``, con errore se non cade sulla griglia."""
-    exact = start_s * fs
-    idx = round(exact)
-    if abs(exact - idx) > 1e-6:
-        raise ValueError(
-            f"start {start_s} s non cade su un campione intero a {fs} Hz: "
-            f"usare la griglia da {CROP_GRID_SECONDS} s"
-        )
-    return int(idx)
 
 
 # --------------------------------------------------------------------------

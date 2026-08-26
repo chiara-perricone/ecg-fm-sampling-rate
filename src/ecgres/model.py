@@ -434,6 +434,13 @@ class CropSampler:
         Sono cose diverse: 0,05 s e' fuori dalla griglia a 0,1 s ma darebbe
         indice 5 a 100 Hz. La griglia e' l'invariante che serve, perche'
         garantisce un indice intero a tutti e quattro i rate insieme.
+
+        Duplica ``ecgres.data.grid_index`` di proposito: ``data`` importa pandas
+        e scipy, e ``model`` deve restare importabile senza. La duplicazione e'
+        vincolata da ``test_to_index_agrees_with_data_grid_index``. Nel percorso
+        di training non viene usata: ``WindowDataset`` passa i secondi a
+        ``SignalCache.window`` e la conversione avviene una volta sola, in
+        ``data``.
         """
         k = start_seconds / GRID_SECONDS
         if abs(k - round(k)) > 1e-9:
@@ -455,14 +462,20 @@ class CacheLike(Protocol):
     """Interfaccia minima richiesta a ``ecgres.data.SignalCache``.
 
     Dichiarata come Protocol perche' i test girino su una cache finta, senza
-    dipendere dai dati veri.
+    dipendere dai dati veri e senza importare ``data`` (e quindi pandas e
+    scipy) dentro ``model``.
+
+    ``window`` prende l'istante in **secondi**: e' la coordinata condivisa fra i
+    bracci, ed e' ``data`` a convertirla in campioni.
     """
 
     fs: int
 
     def __len__(self) -> int: ...
 
-    def window(self, record_idx: int, start: int, length: int) -> np.ndarray: ...
+    def window(
+        self, record_idx: int, start_s: float, *, window_seconds: float = ...
+    ) -> np.ndarray: ...
 
 
 class WindowDataset(torch.utils.data.Dataset):
@@ -488,6 +501,22 @@ class WindowDataset(torch.utils.data.Dataset):
             raise ValueError(f"cache a {cache.fs} Hz, config a {cfg.fs} Hz")
         if train and sampler is None:
             raise ValueError("in training serve un CropSampler")
+        labels = np.asarray(labels)
+        if labels.ndim != 2:
+            raise ValueError(f"labels deve essere 2D, ricevuto {labels.shape}")
+        # ``record_ids`` e ``labels`` vivono nello stesso spazio di indici della
+        # cache (posizioni in ``meta``), non in quello dello split: cosi' il
+        # medesimo array di etichette serve train, val e test senza rimappature,
+        # che sono il punto in cui un leakage entra senza farsi notare.
+        if labels.shape[0] != len(cache):
+            raise ValueError(
+                f"labels ha {labels.shape[0]} righe, la cache {len(cache)}: "
+                "le etichette devono essere allineate ai record della cache"
+            )
+        if labels.shape[1] != cfg.n_classes:
+            raise ValueError(
+                f"labels ha {labels.shape[1]} colonne, la config {cfg.n_classes}"
+            )
         self.cache = cache
         self.record_ids = list(record_ids)
         self.labels = labels
@@ -505,11 +534,26 @@ class WindowDataset(torch.utils.data.Dataset):
         n = len(self.record_ids)
         return n if self.train else n * len(INFERENCE_CROP_STARTS_S)
 
+    def start_seconds(self, i: int) -> tuple[int, float]:
+        """``i`` -> ``(record_id, start_s)``. In secondi, mai in campioni.
+
+        In inferenza l'ordine e' ``record`` esterno e ``crop`` interno, lo
+        stesso di ``SignalCache.inference_batch``: chi aggrega le 4 predizioni a
+        valle puo' fare reshape ``(-1, 4)`` senza consultare i ``record_id``.
+        """
+        if self.train:
+            record_id = self.record_ids[i]
+            return record_id, self.sampler.start_seconds(self.epoch, record_id)
+        n_crops = len(INFERENCE_CROP_STARTS_S)
+        record_id = self.record_ids[i // n_crops]
+        return record_id, INFERENCE_CROP_STARTS_S[i % n_crops]
+
     def __getitem__(self, i: int):
-        raise NotImplementedError
-        # TODO
-        #  1. mappa i -> (record_id, start_seconds)
-        #  2. start = CropSampler.to_index(start_seconds, cfg.fs)
-        #  3. x = cache.window(record_idx, start, cfg.n_samples)
-        #  4. x = scaler.transform(x).astype(np.float32)
-        #  5. ritorna (torch.from_numpy(x), torch.from_numpy(y), record_id)
+        record_id, start_s = self.start_seconds(i)
+        x = self.cache.window(
+            record_id, start_s, window_seconds=self.cfg.window_seconds
+        )
+        # ``transform`` con scalari Python non promuove: float32 in, float32 out.
+        x = np.ascontiguousarray(self.scaler.transform(x), dtype=np.float32)
+        y = np.ascontiguousarray(self.labels[record_id], dtype=np.float32)
+        return torch.from_numpy(x), torch.from_numpy(y), record_id
