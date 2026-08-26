@@ -374,7 +374,9 @@ All six pairwise rate comparisons within Arm A, on the shared fold 10 test set.
 
 Seed variation is handled by averaging predictions across seeds within a rate
 before the paired bootstrap, and separately by reporting the seed-level spread
-per rate. Both are reported; neither is chosen after seeing the result.
+per rate. Both are reported; neither is chosen after seeing the result. Note
+that §3 aggregates seeds by averaging *metrics* rather than predictions, for the
+reason given in §10 entry 19; the asymmetry is deliberate.
 
 **Negative control: 240 Hz versus 250 Hz.** *Added 2026-08-26; see §10.*
 
@@ -395,12 +397,18 @@ of this kind is worth anything.
 
 ### 8.2 Pre-specified interpretation
 
-Let Δ be the largest paired difference in macro AUROC between any two rates in
-Arm A, with its Holm-adjusted 95% CI.
+*Reporting of intervals made executable 2026-08-26; see §10 entry 20.*
 
-- **Δ CI contains zero**, or Δ is no larger than the within-rate seed spread →
-  the factor is not detectable at this scale. Reported as such, without
-  reaching for a subgroup or an alternative metric.
+Let Δ be the largest paired difference in macro AUROC between any two rates in
+Arm A. Three quantities are reported for every pairwise comparison, never one
+chosen after the fact: the unadjusted 95% percentile interval of the difference,
+the Holm-adjusted p-value across the family of six, and a Bonferroni-simultaneous
+percentile interval at α/12 and 1 − α/12, marked as conservative. The thresholds
+below apply to Δ itself, not to any interval.
+
+- **Δ CI contains zero**, or |Δ| is no larger than the **internal null
+  contrast** defined below → the factor is not detectable at this scale.
+  Reported as such, without reaching for a subgroup or an alternative metric.
 - **Δ below 0.006** (the median adjacent leaderboard gap, §1) → detectable but
   smaller than a typical gap between adjacent models.
 - **Δ at or above 0.006** → comparable to the differences the leaderboard treats
@@ -410,6 +418,24 @@ Arm A, with its Holm-adjusted 95% CI.
 
 These thresholds are fixed now. They will not be adjusted after the numbers are
 seen.
+
+**The internal null contrast** *(added 2026-08-26; see §10 entries 21 and 22,
+the second of which corrects the first)*. Δ is a difference between two
+five-seed ensembles, so the quantity it is measured against has to be one too.
+Within each rate the seeds are split into two disjoint subsets **of equal size**
+— 2 against 2, fifteen pairs, one seed left out each time — and the same
+ensemble difference is computed as between rates; the comparator is the median
+absolute value, pooled across rates. Equal sizes matter: unequal subsets measure
+how much better a larger ensemble is, which is a real effect of fixed sign and
+nothing to do with seeds.
+
+The comparator is used **raw and declared as an upper bound**. A contrast
+between two disjoint ensembles of k has standard deviation σ√(2/k), so a
+2-against-2 contrast exceeds the seed-noise floor of a five-against-five Δ by
+about √(5/2) ≈ 1.58; an exactly matched contrast would require ten seeds per
+rate. The rescaled value is reported beside the raw one, and the rule of §8.2
+uses the raw one, which makes the rule conservative by a known factor in a known
+direction. The per-rate seed standard deviation and range are reported as well.
 
 The prior from the nearest published measurement is that Δ will be small: Berger
 et al. report a standard deviation of 0.01–0.03 across 18 randomly initialised
@@ -475,7 +501,9 @@ only when the code that had to execute it was about to be written. Entries
 16–18 close the two verification tasks left open by entries 4 and 5, against the
 sources rather than by inference, and record what those sources turned out not
 to say. Two of them withdraw a cost this protocol had assumed against itself.
-None follows from any result.
+Entries 19 and 20 do for §8 what entry 15 did for §3: they were written while
+the analysis code was being prepared, and they replace two phrases that could
+not have been executed as written. None follows from any result.
 
 | # | Date | Section | Change | Reason |
 |---|---|---|---|---|
@@ -497,3 +525,7 @@ None follows from any result.
 | 16 | 2026-08-26 | §3 | Verified: the 0.941 target is defined on PTB-XL v1.0.3, the same 21,799 records used here. The systematic offset assumed in entry 4 does not exist, and that entry's inference is superseded. | Entry 4 inferred a v1.0.1 population of 21,837 records from `get_datasets.sh` in `helme/ecg_ptbxl_benchmarking`. The inference was drawn from the wrong codebase. The repository behind 0.941 is `AI4HealthUOL/ecg-fm-benchmarking`, whose README directs the reader to `physionet.org/content/ptb-xl/1.0.3/` and whose paper cites Wagner et al. (2022), "PTB-XL, a large publicly available electrocardiography dataset (version 1.0.3), doi:10.13026/kfzx-aw45". `helme/ecg_ptbxl_benchmarking` produced the 0.9417 of Mehari & Strodthoff — the figure the Reality Check compares itself *against*, not the target of §3. Table 2 of the paper reports 21,799 samples for PTB-XL (all/sub/super), which is exactly the population verified file-by-file here against `SHA256SUMS.txt`. One caveat is closed by our own measurement rather than by the paper: that table calls 21,799 an *effective* sample size, meaning records carrying at least one positive label rather than the dataset total. `scripts/build_cache.py` verifies that every record in v1.0.3 carries at least one label, so for PTB-XL (all) the effective and total counts coincide. Consequence for §3: the first of the three candidate explanations for a narrow failure is withdrawn, which makes the blocking condition stricter rather than easier to pass. |
 | 17 | 2026-08-26 | §4 | Verified: the pipeline behind 0.941 reads `records500` and resamples to each model's rate, including for the 100 Hz S4 baseline. Entry 5's choice therefore agrees with the reference instead of departing from it, and the second assumed offset does not exist. Recorded separately: the paper states that no resampling is performed, while its own configuration requires it. | `run.sh` in `AI4HealthUOL/ecg-fm-benchmarking` sets `--data ${DATASET_DIR}/ptb-xl/records500` and `--fs-data 500` for `ptbxl_all`, and gives the S4 baseline `--fs-model 100`, `--input-size 2.5`, `--s4-n 8`, `--s4-h 512`, `--s4-layers 4`, `--precision 32` — matching §4 and §6.5 in every stated hyperparameter. Signals therefore travel from 500 Hz to 100 Hz inside that pipeline, which is what §4 of this protocol does. Entry 5 recorded the use of `records500` as a departure from the reference and as a second systematic offset from 0.941, on the strength of PhysioNet's example script and of `tmehari/ssm_ecg` operating on directories named `ptb_xl_fs100`; both describe the codebase behind 0.9417, not the one behind 0.941. Entry 5's decision stands and its justification is unchanged — only its cost is withdrawn. The second half of this entry bears on the question this repository asks rather than on its execution: §3.3 of the paper states that "all models use the standard 12 ECG leads without additional resampling or filtering", while the same work's configuration declares 500 Hz data together with per-model rates of 100 Hz for S4, 240 Hz for ECG-CPC and 250 Hz for ST-MEM and ECG-JEPA. Resampling necessarily occurs and is nowhere described. This is not an allegation of error; it is the observation that the step whose effect this repository measures is invisible in the methodology as reported, which is the premise of §1. |
 | 18 | 2026-08-26 | §3 | Recorded: the paper does not state how PTB-XL is split. That the folds used here — 1–8 train, 9 validation, 10 test — are the ones behind 0.941 is an assumption, not a verified correspondence. | The word "fold" does not occur anywhere in the paper or its appendices, and no split ratio or split procedure is described for PTB-XL; §3.3 says only "model selection on the validation set" and "bootstrapping on the test set (n=1,000)". The official stratified folds are the near-universal convention for this dataset and the pipeline behind 0.941 is built on `clinical_ts`, which uses them, so the assumption is a reasonable one. It is nonetheless an assumption, and unlike entries 16 and 17 it cannot be closed from the published material: it is recorded rather than resolved. If Stage 0 fails narrowly this is now the second thing to examine, after entry 11, those two being the only candidates left. The rate comparison of §8.1 is internal and holds the split fixed, so it is unaffected either way. |
+| 19 | 2026-08-26 | §3, §8.1 | Recorded: the two stages aggregate seeds differently on purpose. §8.1 averages *predictions* across seeds within a rate, as written; §3 averages *metrics* across seeds, per entry 15. The asymmetry is deliberate and the estimands differ accordingly. | Averaging predictions builds an ensemble, and the macro AUROC of a five-model ensemble is generally higher than the mean of the five individual values, so the two operations are not interchangeable and read as an inconsistency unless the reason is stated. For §3 averaging predictions would be wrong: the comparison is against 0.941, a single published model, and an ensemble of three would not be the same kind of object. For §8.1 averaging predictions is preferable: the comparison is internal, the same operation is applied to every rate, and ensembling suppresses initialisation noise while leaving the systematic rate effect, which is the only quantity of interest. The interpretive consequence is stated here rather than left implicit: the Δ of §8.2 is measured on five-seed ensembles and compared against 0.006, an adjacent gap between *single* models on the leaderboard. Ensembling removes variance rather than signal, so the magnitudes remain comparable, but a reader is entitled to know that the two sides of that comparison are not built the same way. Per-rate seed spread is reported in both stages regardless, as §8.1 already requires. |
+| 20 | 2026-08-26 | §8.2 | The phrase "Holm-adjusted 95% CI" is replaced by three quantities that exist: the unadjusted 95% percentile interval of each pairwise difference, the Holm-adjusted p-value for the family of six, and a Bonferroni-simultaneous percentile interval at α/12 and 1 − α/12, labelled as conservative. | Holm–Bonferroni adjusts p-values; it does not define an interval, and there is no standard construction that turns a step-down p-value procedure into a confidence interval. Left as written, the phrase would have been implemented as whatever the analysis code happened to compute, and reported under a name that sounds authoritative and denotes nothing. The three replacements each answer a real question: the unadjusted interval is the uncertainty of that one comparison, the Holm-adjusted p-value is the family-wise significance §8.1 prescribes, and the Bonferroni-simultaneous interval is the interval a reader may use to view all six comparisons at once, at the cost of being wider than necessary. Reporting all three also prevents the choice among them from being made after the numbers are seen. The interpretation thresholds of §8.2 — 0.006 and 0.019 — are unchanged and continue to apply to Δ itself, not to any interval. |
+| 21 | 2026-08-26 | §8.2 | "Within-rate seed spread" is made precise as an **internal null contrast built exactly like Δ**: within each rate the five seeds are split into two disjoint subsets, the same ensemble difference is computed as between rates, and the comparator is the median absolute value over all ten 2/3 partitions, pooled across rates. Per-rate seed standard deviation and range continue to be reported. | §8.1 forms Δ by averaging predictions across the five seeds of a rate (entry 19), so Δ is a difference between two five-seed ensembles. "Seed spread", read as the dispersion of individual runs, is an object of a different kind: an ensemble of five carries roughly a fifth of the variance of a single run, so measuring Δ against individual-run dispersion sets a systematically slack threshold and tilts the rule of §8.2 toward "not detectable". That tilt is toward the null, which is the safer direction for credibility and the wrong one for power; either way it is not the comparison §6.4 describes. The internal null contrast removes the mismatch by construction: numerator and denominator are both differences between ensembles over the same records, differing only in whether the two ensembles come from different rates or from the same one. It answers the question §6.4 actually asks — whether changing the rate moves macro AUROC further than reseeding does — without changing object halfway through. Two alternatives were considered and rejected. The pooled between-seed standard deviation is simpler to describe and does not depend on the number of seeds, but remains an individual-run quantity and so keeps the mismatch. The max-minus-min range is the most literal reading of the original wording, but its expectation grows with the number of seeds — roughly 2.3σ at five, 3σ at ten — which would make the verdict depend on a budget decision rather than on the data. The choice was made before any run and costs no additional compute; it was noticed only because the analysis code was exercised on synthetic predictions before the real ones existed. |
+| 22 | 2026-08-26 | §8.2 | **Corrects entry 21, which was wrong.** The internal null contrast uses two disjoint subsets of **equal size** — 2 against 2 out of five seeds, fifteen pairs, one seed left out of each — not the 2/3 partitions of entry 21. The comparator is the median absolute value, used raw and declared as an upper bound. | Entry 21's 2/3 partition does not measure seed variation: it measures ensemble size. On synthetic predictions written to exercise the analysis code, ensembles of one, two, three, four and five seeds scored 0.738, 0.813, 0.861, 0.895 and 0.919, and the 2-against-3 contrast had median absolute value 0.048 with mean −0.048 — a fixed sign, therefore not noise but the systematic advantage of averaging one more model. A comparator built that way would have declared every plausible Δ undetectable, and would have done so for a reason having nothing to do with seeds. Equal-sized subsets remove the confound: the same synthetic data gives a median of 0.010 for 2 against 2, against a between-seed standard deviation of 0.014. One imperfection remains and is not removable at this budget. A contrast between two disjoint ensembles of k has standard deviation σ√(2/k); Δ compares ensembles of five, the contrast compares ensembles of two, so the empirical comparator exceeds the true seed-noise floor of Δ by about √(5/2) ≈ 1.58. An exactly matched contrast would need ten seeds per rate. The raw value is used rather than a √(2/5) rescaling because rescaling assumes the between-seed noise averages like a variance, which is reasonable but unverified for AUROC, a functional that is not linear in the predictions. The consequence is stated plainly: the rule of §8.2 is conservative by a known factor in a known direction, an effect between roughly 0.6 and 1.0 times the measured comparator will be called undetectable, and a Δ that clears this threshold cannot be dismissed as an artefact of the correction. Both the raw and the rescaled values are reported. |

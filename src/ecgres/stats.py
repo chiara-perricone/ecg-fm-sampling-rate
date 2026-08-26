@@ -74,6 +74,40 @@ def bootstrap_indices(n: int, n_boot: int, rng: np.random.Generator) -> np.ndarr
     return rng.integers(0, n, size=(n_boot, n))
 
 
+def percentile_ci(draws: np.ndarray, alpha: float = 0.05) -> tuple[float, float]:
+    """Percentile interval of a bootstrap distribution, dropping undefined draws.
+
+    Separated out because section 8 needs intervals at two different alphas over
+    the same draws: the per-comparison 95% interval and the Bonferroni
+    simultaneous one at alpha/m. Recomputing the draws for the second would cost
+    an hour and would not change them.
+    """
+    draws = np.asarray(draws, dtype=float)
+    draws = draws[np.isfinite(draws)]
+    if draws.size == 0:
+        raise RuntimeError("all bootstrap replicates were undefined")
+    lo, hi = np.percentile(draws, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return float(lo), float(hi)
+
+
+def p_value_from_draws(draws: np.ndarray) -> float:
+    """Two-sided p-value by interval inversion, with add-one smoothing.
+
+    The smallest alpha at which the percentile interval would still exclude
+    zero. Add-one smoothing keeps the value strictly positive, so that a
+    difference no replicate crossed does not report p = 0, which no finite
+    bootstrap can support.
+    """
+    draws = np.asarray(draws, dtype=float)
+    draws = draws[np.isfinite(draws)]
+    if draws.size == 0:
+        raise RuntimeError("all bootstrap replicates were undefined")
+    n = draws.size
+    below = (np.sum(draws <= 0.0) + 1) / (n + 1)
+    above = (np.sum(draws >= 0.0) + 1) / (n + 1)
+    return float(min(1.0, 2.0 * min(below, above)))
+
+
 def bootstrap_ci(
     y_true: np.ndarray,
     y_score: np.ndarray,
@@ -95,12 +129,8 @@ def bootstrap_ci(
 
     point = metric_fn(y_true, y_score)
     draws = np.array([metric_fn(y_true[i], y_score[i]) for i in idx], dtype=float)
-    draws = draws[np.isfinite(draws)]
-    if draws.size == 0:
-        raise RuntimeError("all bootstrap replicates were undefined")
-
-    lo, hi = np.percentile(draws, [100 * alpha / 2, 100 * (1 - alpha / 2)])
-    return Estimate(name=name, point=float(point), lo=float(lo), hi=float(hi), alpha=alpha)
+    lo, hi = percentile_ci(draws, alpha)
+    return Estimate(name=name, point=float(point), lo=lo, hi=hi, alpha=alpha)
 
 
 def paired_bootstrap(
@@ -130,18 +160,8 @@ def paired_bootstrap(
         [metric_fn(y_true[i], score_a[i]) - metric_fn(y_true[i], score_b[i]) for i in idx],
         dtype=float,
     )
-    draws = draws[np.isfinite(draws)]
-    if draws.size == 0:
-        raise RuntimeError("all bootstrap replicates were undefined")
-
-    lo, hi = np.percentile(draws, [100 * alpha / 2, 100 * (1 - alpha / 2)])
-
-    # Two-sided p-value by CI inversion: the smallest alpha at which the
-    # interval would still exclude zero. Add-one smoothing keeps p > 0.
-    n = draws.size
-    below = (np.sum(draws <= 0.0) + 1) / (n + 1)
-    above = (np.sum(draws >= 0.0) + 1) / (n + 1)
-    p = float(min(1.0, 2.0 * min(below, above)))
+    lo, hi = percentile_ci(draws, alpha)
+    p = p_value_from_draws(draws)
 
     return Comparison(
         name_a=name_a,
