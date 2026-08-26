@@ -17,10 +17,12 @@ torch = pytest.importorskip("torch")
 from ecgres.model import (  # noqa: E402
     DT_MAX_DEFAULT,
     DT_MIN_DEFAULT,
+    FIT_FS,
     GRID_SECONDS,
     INFERENCE_CROP_STARTS_S,
     RATES,
     CropSampler,
+    GlobalScaler,
     ModelConfig,
     S4Backbone,
     build_model,
@@ -266,6 +268,141 @@ def test_crop_start_is_deterministic_and_varies_with_epoch():
     assert s.start_seconds(0, 42) == s.start_seconds(0, 42)
     starts = {s.start_seconds(e, 42) for e in range(50)}
     assert len(starts) > 1
+
+
+def _fake_signals(n=20, leads=12, length=64, seed=7):
+    rng = np.random.default_rng(seed)
+    # Scale diverse per derivazione: serve a distinguere lo scaler globale da
+    # uno per derivazione.
+    scales = np.linspace(0.1, 3.0, leads)[None, :, None]
+    return (rng.normal(size=(n, leads, length)) * scales).astype(np.float32)
+
+
+class _FakeCache:
+    """Minimo indispensabile per ``GlobalScaler.fit_from_cache``."""
+
+    def __init__(self, array, fs=FIT_FS, notch=True, source="hr"):
+        self.array = array
+        self.fs = fs
+        self.notch = notch
+        self.source = source
+        self.stem = f"ptbxl_{source}_fs{fs}_notch{int(notch)}"
+
+
+# --------------------------------------------------------------------------- #
+# GlobalScaler (§10 voci 7 e 8)
+# --------------------------------------------------------------------------- #
+
+
+def test_scaler_is_global_not_per_lead():
+    """Voce 7: una sola coppia (mean, std) su tutte le derivazioni insieme.
+
+    Replica ``ss.transform(x.flatten()[:, np.newaxis])`` del riferimento. Con
+    uno scaler per derivazione la varianza relativa fra derivazioni sparirebbe,
+    che e' una scelta legittima ma **non** quella del run da riprodurre.
+    """
+    x = _fake_signals()
+    scaler = GlobalScaler.fit(x)
+    flat = np.asarray(x, dtype=np.float64)
+    assert scaler.mean == pytest.approx(flat.mean(), abs=1e-12)
+    assert scaler.std == pytest.approx(flat.std(), rel=1e-12)
+
+    per_lead = flat.std(axis=(0, 2))
+    assert per_lead.max() / per_lead.min() > 5  # le derivazioni sono diverse
+    assert not np.allclose(per_lead, scaler.std, rtol=0.1)
+
+
+def test_scaler_standardizes_what_it_was_fitted_on():
+    x = _fake_signals()
+    z = GlobalScaler.fit(x).transform(np.asarray(x, dtype=np.float64))
+    assert z.mean() == pytest.approx(0.0, abs=1e-12)
+    assert z.std() == pytest.approx(1.0, rel=1e-12)
+
+
+@pytest.mark.parametrize("chunk", [1, 3, 7, 10_000])
+def test_scaler_fit_is_independent_of_chunking(chunk):
+    """Il blocco esiste per non materializzare 4,2 GB, non per cambiare il fit."""
+    x = _fake_signals()
+    ref = GlobalScaler.fit(x, chunk=10**9)
+    got = GlobalScaler.fit(x, chunk=chunk)
+    assert got.mean == pytest.approx(ref.mean, abs=1e-12)
+    assert got.std == pytest.approx(ref.std, rel=1e-12)
+
+
+def test_scaler_fit_uses_only_the_selected_records():
+    """Fold 1-8, non tutto: il test set non deve entrare nella costante."""
+    x = _fake_signals()
+    idx = [0, 1, 2, 5, 8, 13]
+    got = GlobalScaler.fit(x, idx)
+    ref = GlobalScaler.fit(x[idx])
+    assert got.mean == pytest.approx(ref.mean, abs=1e-12)
+    assert got.std == pytest.approx(ref.std, rel=1e-12)
+    assert got.provenance["n_records"] == len(idx)
+    assert got.provenance["n_values"] == x[idx].size
+    # Un sottoinsieme diverso deve dare un risultato diverso, o il test sopra
+    # passerebbe anche con un fit su tutto.
+    assert GlobalScaler.fit(x, [3, 4]).std != pytest.approx(ref.std, rel=1e-6)
+
+
+def test_scaler_survives_a_large_offset():
+    """La seconda passata serve a questo.
+
+    Con ``E[x^2] - E[x]^2`` su un segnale traslato di 1e6 la varianza
+    verrebbe da una differenza fra numeri quasi uguali e perderebbe cifre.
+    """
+    x = _fake_signals().astype(np.float64) + 1e6
+    scaler = GlobalScaler.fit(x)
+    assert scaler.std == pytest.approx(x.std(), rel=1e-9)
+
+
+def test_scaler_rejects_degenerate_fit():
+    """Segnale costante: std nulla, lo scaler non deve nascere."""
+    with pytest.raises(ValueError):
+        GlobalScaler.fit(np.zeros((4, 12, 32), dtype=np.float32))
+
+
+def test_scaler_fingerprint_depends_on_the_record_order():
+    x = _fake_signals()
+    a = GlobalScaler.fit(x, [0, 1, 2])
+    b = GlobalScaler.fit(x, [2, 1, 0])
+    assert a.mean == pytest.approx(b.mean, abs=1e-12)
+    assert a.provenance["record_fingerprint"] != b.provenance["record_fingerprint"]
+
+
+def test_fit_from_cache_records_provenance():
+    x = _fake_signals()
+    scaler = GlobalScaler.fit_from_cache(_FakeCache(x), np.arange(10))
+    p = scaler.provenance
+    assert p["fs"] == FIT_FS
+    assert p["folds"] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert p["notch"] is True
+    assert p["source"] == "hr"
+    assert p["window"] == "full_record"
+
+
+@pytest.mark.parametrize("fs", [fs for fs in RATES if fs != FIT_FS])
+def test_fit_from_cache_refuses_other_rates(fs):
+    """Voce 8: rifittare per braccio assorbirebbe l'effetto nella costante."""
+    with pytest.raises(ValueError):
+        GlobalScaler.fit_from_cache(_FakeCache(_fake_signals(), fs=fs), [0, 1])
+
+
+def test_scaler_json_roundtrip(tmp_path):
+    scaler = GlobalScaler.fit_from_cache(_FakeCache(_fake_signals()), np.arange(10))
+    path = tmp_path / "scaler.json"
+    scaler.to_json(path)
+    back = GlobalScaler.from_json(path)
+    assert back.mean == scaler.mean
+    assert back.std == scaler.std
+    for key, value in scaler.provenance.items():
+        assert back.provenance[key] == value
+
+
+def test_scaler_from_json_rejects_another_format(tmp_path):
+    path = tmp_path / "scaler.json"
+    path.write_text('{"version": 99, "mean": 0.0, "std": 1.0}')
+    with pytest.raises(ValueError):
+        GlobalScaler.from_json(path)
 
 
 def test_to_index_rejects_off_grid():

@@ -25,7 +25,11 @@ Il layer S4 e' vendorato in ``ecgres.vendor.s4`` da ``HazyResearch/state-spaces`
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal, Protocol, Sequence
 
 import numpy as np
@@ -40,6 +44,7 @@ __all__ = [
     "S4Backbone",
     "build_model",
     "GlobalScaler",
+    "FIT_FS",
     "CropSampler",
     "INFERENCE_CROP_STARTS_S",
     "WindowDataset",
@@ -68,6 +73,11 @@ DT_MAX_DEFAULT = 1e-1
 #: Rate a cui i default upstream sono "nativi": a 100 Hz coprono orizzonti
 #: 0,1-10 s. La compensazione di Arm B riporta ogni rate su questi orizzonti.
 DT_REFERENCE_FS = 100
+
+#: Frequenza a cui lo scaler globale viene fittato, una volta sola (voce 8).
+FIT_FS = 500
+
+_SCALER_FORMAT_VERSION = 1
 
 
 # --------------------------------------------------------------------------- #
@@ -247,26 +257,145 @@ class GlobalScaler:
     parte dell'effetto in esame.
     """
 
-    def __init__(self, mean: float, std: float) -> None:
+    def __init__(
+        self, mean: float, std: float, provenance: dict | None = None
+    ) -> None:
         if not np.isfinite(mean) or not np.isfinite(std) or std <= 0:
             raise ValueError(f"scaler non valido: mean={mean}, std={std}")
         self.mean = float(mean)
         self.std = float(std)
+        #: Da dove viene il fit. Serializzata insieme a mean/std: uno scaler
+        #: senza provenienza non e' verificabile a posteriori.
+        self.provenance = dict(provenance or {})
 
     @classmethod
-    def fit(cls, signals: np.ndarray) -> "GlobalScaler":
-        """``signals``: ``(n_records, 12, n_samples)``, fold 1-8 a 500 Hz."""
-        raise NotImplementedError  # TODO: media/std su tutti gli assi, float64
+    def fit(
+        cls,
+        signals,
+        record_idx: Sequence[int] | np.ndarray | None = None,
+        *,
+        chunk: int = 256,
+        provenance: dict | None = None,
+    ) -> "GlobalScaler":
+        """Media e std scalari su ``signals``: fold 1-8, 500 Hz, record interi.
+
+        ``signals`` ha forma ``(n_record, 12, n_campioni)`` e puo' essere un
+        memmap: viene letto **a blocchi di ``chunk`` record**, mai
+        materializzato. A 500 Hz i fold 1-8 sono ~4,2 GB.
+
+        ``record_idx`` seleziona il sottoinsieme di training. Indicizzare un
+        memmap con un array copierebbe tutto in RAM, quindi la selezione avviene
+        blocco per blocco.
+
+        Due passate, non una: la prima calcola la media, la seconda la somma
+        degli scarti **dalla media gia' nota**. Con una sola passata la varianza
+        verrebbe da ``E[x^2] - E[x]^2``, una differenza fra numeri quasi uguali
+        su 1e9 addendi. Il costo e' una seconda lettura del memmap; la posta e'
+        la costante che normalizza tutti e quattro i bracci.
+
+        Il fit usa i **record interi da 10 s**, non i crop: i crop dipendono da
+        seed ed epoca, e lo scaler deve essere lo stesso per ogni cella
+        dell'esperimento (voce 8).
+
+        ``ddof=0``, come ``sklearn.preprocessing.StandardScaler``.
+        """
+        rows = (
+            np.arange(len(signals))
+            if record_idx is None
+            else np.asarray(record_idx, dtype=np.int64)
+        )
+        if rows.size == 0:
+            raise ValueError("nessun record su cui fittare lo scaler")
+        if chunk < 1:
+            raise ValueError(f"chunk deve essere >= 1, ricevuto {chunk}")
+
+        def blocks():
+            for begin in range(0, rows.size, chunk):
+                sel = rows[begin : begin + chunk]
+                yield np.asarray(signals[sel], dtype=np.float64)
+
+        total = 0.0
+        n_values = 0
+        for block in blocks():
+            total += float(block.sum())
+            n_values += block.size
+        mean = total / n_values
+
+        sq = 0.0
+        for block in blocks():
+            sq += float(((block - mean) ** 2).sum())
+        std = math.sqrt(sq / n_values)
+
+        info = {
+            "n_records": int(rows.size),
+            "n_values": int(n_values),
+            "record_fingerprint": _fingerprint(rows),
+            "window": "full_record",
+            "ddof": 0,
+        }
+        info.update(provenance or {})
+        return cls(mean, std, info)
+
+    @classmethod
+    def fit_from_cache(
+        cls,
+        cache,
+        record_idx: Sequence[int] | np.ndarray,
+        *,
+        folds: Sequence[int] = (1, 2, 3, 4, 5, 6, 7, 8),
+        chunk: int = 256,
+    ) -> "GlobalScaler":
+        """``fit`` su una ``SignalCache``, con la provenienza compilata da sola.
+
+        Richiede una cache a ``SOURCE_FS`` (voce 8): fittare a un rate diverso
+        cambierebbe la costante e con essa il confronto.
+        """
+        fs = int(getattr(cache, "fs"))
+        if fs != FIT_FS:
+            raise ValueError(
+                f"lo scaler va fittato a {FIT_FS} Hz (voce 8), non a {fs} Hz"
+            )
+        provenance = {
+            "fs": fs,
+            "notch": bool(getattr(cache, "notch", True)),
+            "source": str(getattr(cache, "source", "hr")),
+            "folds": [int(f) for f in folds],
+            "cache_stem": str(getattr(cache, "stem", "")),
+        }
+        return cls.fit(
+            cache.array, record_idx, chunk=chunk, provenance=provenance
+        )
 
     def transform(self, x: np.ndarray) -> np.ndarray:
         return (x - self.mean) / self.std
 
     def to_json(self, path) -> None:
-        raise NotImplementedError  # TODO: mean, std, fs del fit, fold, fingerprint
+        payload = {
+            "version": _SCALER_FORMAT_VERSION,
+            "mean": self.mean,
+            "std": self.std,
+            "numpy_version": np.__version__,
+            **self.provenance,
+        }
+        Path(path).write_text(json.dumps(payload, indent=2, sort_keys=True))
 
     @classmethod
     def from_json(cls, path) -> "GlobalScaler":
-        raise NotImplementedError
+        info = json.loads(Path(path).read_text())
+        version = info.pop("version", None)
+        if version != _SCALER_FORMAT_VERSION:
+            raise ValueError(
+                f"scaler in formato {version}, atteso {_SCALER_FORMAT_VERSION}"
+            )
+        mean = info.pop("mean")
+        std = info.pop("std")
+        return cls(mean, std, info)
+
+
+def _fingerprint(values: np.ndarray) -> str:
+    """Hash corto dell'ordine degli indici usati, come in ``SignalCache``."""
+    payload = ",".join(str(int(v)) for v in values)
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
 # --------------------------------------------------------------------------- #
