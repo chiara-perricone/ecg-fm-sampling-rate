@@ -43,6 +43,7 @@ __all__ = [
     "ModelConfig",
     "S4Backbone",
     "build_model",
+    "decouple_aliased_state",
     "GlobalScaler",
     "FIT_FS",
     "CropSampler",
@@ -220,6 +221,51 @@ class S4Backbone(nn.Module):
         return self.head(x)
 
 
+def _is_aliased(t: torch.Tensor) -> bool:
+    """Vero se piu' indici del tensore indirizzano la stessa cella di memoria."""
+    return any(stride == 0 for stride in t.stride())
+
+
+def decouple_aliased_state(model: nn.Module) -> list[str]:
+    """Materializza i tensori del kernel S4 che condividono memoria.
+
+    ``s4.py`` inizializza A, B e P con ``einops.repeat``, che non copia ma
+    espande: tutti gli head puntano alla stessa cella. E' innocuo dal punto di
+    vista numerico — sono buffer, non parametri, quindi nessuno ci scrive, e i
+    valori letti sono gli stessi — ma rende il modello **non ricaricabile**:
+    ``load_state_dict`` copia in-place e rifiuta una destinazione aliasata con
+    "more than one element of the written-to tensor refers to a single memory
+    location".
+
+    Senza questa normalizzazione il resume di §6.7 non funziona, e con esso
+    cade l'uso di istanze interrompibili.
+
+    Sostituire le viste con copie contigue **non cambia un solo valore**: cambia
+    il layout. Va fatto alla costruzione, prima che l'ottimizzatore prenda i
+    riferimenti ai tensori. Restituisce i nomi toccati.
+    """
+    touched: list[str] = []
+    for module_name, module in model.named_modules():
+        prefix = f"{module_name}." if module_name else ""
+
+        for name, buf in list(module._buffers.items()):
+            if buf is None or not _is_aliased(buf):
+                continue
+            persistent = name not in module._non_persistent_buffers_set
+            module.register_buffer(name, buf.contiguous(), persistent=persistent)
+            touched.append(prefix + name)
+
+        for name, param in list(module._parameters.items()):
+            if param is None or not _is_aliased(param.data):
+                continue
+            module._parameters[name] = nn.Parameter(
+                param.data.contiguous(), requires_grad=param.requires_grad
+            )
+            touched.append(prefix + name)
+
+    return touched
+
+
 def build_model(cfg: ModelConfig, seed: int) -> S4Backbone:
     """Costruisce il modello con RNG seedato.
 
@@ -228,7 +274,9 @@ def build_model(cfg: ModelConfig, seed: int) -> S4Backbone:
     ``test_init_identical_across_rates``.
     """
     torch.manual_seed(seed)
-    return S4Backbone(cfg)
+    model = S4Backbone(cfg)
+    decouple_aliased_state(model)
+    return model
 
 
 def count_parameters(model: nn.Module) -> int:

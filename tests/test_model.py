@@ -27,6 +27,7 @@ from ecgres.model import (  # noqa: E402
     S4Backbone,
     build_model,
     count_parameters,
+    decouple_aliased_state,
 )
 
 SEED = 0
@@ -229,6 +230,53 @@ def test_log_dt_is_a_buffer_not_a_parameter():
     buffer_names = {n for n, _ in model.named_buffers()}
     assert any(n.endswith("log_dt") for n in buffer_names)
     assert not any(n.endswith("log_dt") for n in param_names)
+
+
+def test_no_tensor_is_aliased_after_build():
+    """Sentinella sulla vendorizzazione, non solo igiene di memoria.
+
+    ``s4.py`` espande A, B e P con ``einops.repeat``: senza materializzarli il
+    modello non si ricarica, e senza ricarica non c'e' resume. Se una futura
+    versione del file vendorato introducesse un altro tensore espanso, questo
+    test lo intercetta prima che lo faccia un'interruzione a meta' di un run.
+    """
+    model = build_model(tiny(500), SEED)
+    aliased = [
+        name
+        for name, t in [*model.named_buffers(), *model.named_parameters()]
+        if any(stride == 0 for stride in t.stride())
+    ]
+    assert aliased == [], aliased
+
+
+def test_build_actually_had_something_to_decouple():
+    """Se un giorno upstream smettesse di espandere, va saputo.
+
+    Non e' un difetto da correggere ma un'assunzione da non lasciare implicita:
+    la normalizzazione esiste perche' serve, e questo test dice se serve ancora.
+    """
+    torch.manual_seed(SEED)
+    raw = S4Backbone(tiny(500))
+    assert decouple_aliased_state(raw), "nessun tensore espanso: verificare s4.py"
+
+
+def test_state_dict_round_trips_into_a_fresh_model():
+    """La precondizione del resume di §6.7, verificata senza allenare nulla."""
+    a = build_model(tiny(250), SEED)
+    b = build_model(tiny(250), SEED + 1)
+    b.load_state_dict(a.state_dict())  # strict: nessuna chiave puo' mancare
+    for (name, x), (_, y) in zip(a.state_dict().items(), b.state_dict().items()):
+        assert torch.equal(x, y), name
+
+
+def test_decoupling_does_not_change_any_value():
+    """Cambia il layout, non i numeri."""
+    torch.manual_seed(SEED)
+    raw = S4Backbone(tiny(500))
+    before = {n: t.clone() for n, t in raw.named_buffers()}
+    decouple_aliased_state(raw)
+    for name, t in raw.named_buffers():
+        assert torch.equal(t, before[name]), name
 
 
 def test_forward_does_not_expose_rate():
