@@ -272,6 +272,55 @@ def test_run_writes_history_manifest_and_selection(tmp_path):
         assert (out / f"best-{metric}.pt").exists()
 
 
+def test_resume_refuses_a_reduced_run(tmp_path):
+    """Il caso vero: una prova su pochi record lascia un ``last.pt`` valido.
+
+    Ha l'id giusto, quindi il controllo sul ``run_id`` lo lascerebbe passare, e
+    il run del protocollo ripartirebbe dall'epoca 1 con i dati completi. Le
+    prime epoche avrebbero visto altro, e nulla lo direbbe.
+    """
+    run, cfg, _, val_ds = _setup()
+    cache = _FakeCache()
+    reduced = WindowDataset(
+        cache=cache, record_ids=list(range(8)), labels=_labels(),
+        scaler=GlobalScaler(0.0, 1.0), cfg=cfg, train=True, sampler=CropSampler(seed=0),
+    )
+    full = _fixture(True, cfg, cache)
+    out = tmp_path / run.run_id
+
+    common = dict(
+        run=run, model_cfg=cfg, val_dataset=val_ds, clean_columns=CLEAN,
+        out_dir=out, device="cpu",
+    )
+    run_training(train_dataset=reduced, cfg=TrainConfig(epochs=1, batch_size=8), **common)
+    with pytest.raises(ValueError, match="configurazione diversa"):
+        run_training(train_dataset=full, cfg=TrainConfig(epochs=2, batch_size=8), **common)
+
+
+def test_fingerprint_ignores_the_epoch_count():
+    """Allungare uno schedule interrotto e' l'uso previsto, non un cambio."""
+    from ecgres.train import training_fingerprint
+
+    run, cfg, train_ds, val_ds = _setup()
+    a = training_fingerprint(run, cfg, TrainConfig(epochs=1), train_ds, val_ds, CLEAN)
+    b = training_fingerprint(run, cfg, TrainConfig(epochs=100), train_ds, val_ds, CLEAN)
+    c = training_fingerprint(run, cfg, TrainConfig(epochs=1, batch_size=8), train_ds, val_ds, CLEAN)
+    assert a == b
+    assert a != c  # il batch invece conta
+
+
+def test_fingerprint_changes_with_the_scaler():
+    """Due costanti di normalizzazione diverse sono due esperimenti diversi."""
+    from ecgres.train import training_fingerprint
+
+    run, cfg, train_ds, val_ds = _setup()
+    other = _fixture(True, cfg, _FakeCache())
+    other.scaler = GlobalScaler(1.0, 2.0)
+    a = training_fingerprint(run, cfg, TrainConfig(), train_ds, val_ds, CLEAN)
+    b = training_fingerprint(run, cfg, TrainConfig(), other, val_ds, CLEAN)
+    assert a != b
+
+
 def test_resume_refuses_a_checkpoint_from_another_run(tmp_path):
     run, cfg, train_ds, val_ds = _setup()
     out = tmp_path / "shared"

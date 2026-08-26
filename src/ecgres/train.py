@@ -26,6 +26,7 @@ garantite:
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import platform
 from dataclasses import asdict, dataclass
@@ -49,6 +50,7 @@ __all__ = [
     "evaluate",
     "epoch_metrics",
     "best_epochs",
+    "training_fingerprint",
     "write_history",
     "read_history",
     "run_training",
@@ -250,9 +252,55 @@ def _train_one_epoch(
     return total / max(n_batches, 1)
 
 
-def _checkpoint(model, optimiser, epoch: int, history: list[dict], run_id: str) -> dict:
+def training_fingerprint(
+    run: RunSpec,
+    model_cfg: ModelConfig,
+    cfg: TrainConfig,
+    train_dataset: WindowDataset,
+    val_dataset: WindowDataset,
+    clean_columns: Sequence[int],
+) -> str:
+    """Impronta di tutto cio' che, cambiando, rende un checkpoint inutilizzabile.
+
+    Il solo ``run_id`` non basta. Una prova ridotta — poche epoche su un
+    sottoinsieme di record — produce un ``last.pt`` con l'id giusto, e il run
+    vero lo riprenderebbe continuando con i dati completi: un run del protocollo
+    la cui prima epoca ha visto altri dati, senza un solo errore a dirlo.
+
+    ``epochs`` e' escluso di proposito: allungare uno schedule interrotto e'
+    esattamente l'uso previsto. ``num_workers`` pure, perche' non tocca i
+    risultati.
+    """
+    payload = {
+        "run": asdict(run),
+        "model": asdict(model_cfg),
+        "batch_size": cfg.batch_size,
+        "lr": cfg.lr,
+        "weight_decay": cfg.weight_decay,
+        "n_train_items": len(train_dataset),
+        "n_val_items": len(val_dataset),
+        "train_record_ids": _digest(train_dataset.record_ids),
+        "val_record_ids": _digest(val_dataset.record_ids),
+        "scaler": [train_dataset.scaler.mean, train_dataset.scaler.std],
+        "clean_columns": _digest(clean_columns),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode()
+    ).hexdigest()[:16]
+
+
+def _digest(values: Sequence[int]) -> str:
+    return hashlib.sha256(
+        ",".join(str(int(v)) for v in values).encode()
+    ).hexdigest()[:16]
+
+
+def _checkpoint(
+    model, optimiser, epoch: int, history: list[dict], run_id: str, fingerprint: str
+) -> dict:
     return {
         "run_id": run_id,
+        "fingerprint": fingerprint,
         "epoch": epoch,
         "model": model.state_dict(),
         "optimiser": optimiser.state_dict(),
@@ -292,6 +340,10 @@ def run_training(
     )
     loss_fn = nn.BCEWithLogitsLoss()
 
+    fingerprint = training_fingerprint(
+        run, model_cfg, cfg, train_dataset, val_dataset, clean_columns
+    )
+
     history: list[dict] = []
     start_epoch = 0
     last_path = out_dir / "last.pt"
@@ -300,6 +352,14 @@ def run_training(
         if state["run_id"] != run.run_id:
             raise ValueError(
                 f"{last_path} appartiene a {state['run_id']}, non a {run.run_id}"
+            )
+        if state.get("fingerprint") != fingerprint:
+            raise ValueError(
+                f"{last_path} viene da una configurazione diversa "
+                f"({state.get('fingerprint')} contro {fingerprint}): record, "
+                "batch, scaler o modello non coincidono. Riprenderlo darebbe un "
+                "run le cui prime epoche hanno visto altro. Cancellare la "
+                "cartella e ripartire."
             )
         model.load_state_dict(state["model"])
         optimiser.load_state_dict(state["optimiser"])
@@ -316,7 +376,7 @@ def run_training(
         row = {"epoch": epoch, "train_loss": loss, **epoch_metrics(y_true, y_prob, clean_columns)}
         history.append(row)
 
-        state = _checkpoint(model, optimiser, epoch, history, run.run_id)
+        state = _checkpoint(model, optimiser, epoch, history, run.run_id, fingerprint)
         torch.save(state, last_path)
         for metric, best_epoch in best_epochs(history).items():
             if best_epoch == epoch:
