@@ -1,0 +1,23 @@
+{
+  "arm": "A",
+  "block": 1,
+  "checkpoint_criterion": "macro_clean",
+  "checkpoint_epoch": 30,
+  "fold": 10,
+  "fs": 500,
+  "git_sha": "872730f437d5ee3de4a741b56b4c1ef0a888e64a",
+  "is_counterfactual": false,
+  "macro_all": 0.9405416891365389,
+  "macro_clean": 0.9439858428697324,
+  "n_labels_defined": 71,
+  "n_labels_defined_clean": 49,
+  "n_records": 2198,
+  "notch": true,
+  "run_id": "b1-fs500-A-n1-s1",
+  "scaler": {
+    "mean": -0.0007768419640086214,
+    "path": "scaler_fs500_notch1.json",
+    "std": 0.23694575892112618
+  },
+  "seed": 1
+}
