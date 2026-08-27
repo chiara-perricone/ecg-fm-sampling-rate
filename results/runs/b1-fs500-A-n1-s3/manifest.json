@@ -1,0 +1,85 @@
+{
+  "argv": [
+    "--run-id",
+    "b1-fs500-A-n1-s3",
+    "--deterministic",
+    "--num-workers",
+    "8"
+  ],
+  "cache_stem": "ptbxl_hr_fs500_notch1",
+  "cuda": "13.0",
+  "cudnn_benchmark": false,
+  "cudnn_deterministic": true,
+  "device": "cuda",
+  "fingerprint": "beec586c63bf162f",
+  "git_sha": "08464fe5fd6507b7290ed3fff2a9d8d48d7666ad",
+  "gpu": "NVIDIA GeForce RTX 5090",
+  "model": {
+    "arm": "A",
+    "bidirectional": true,
+    "d_model": 512,
+    "d_state": 8,
+    "dropout": 0.2,
+    "fs": 500,
+    "n_classes": 71,
+    "n_layers": 4,
+    "norm": "layer",
+    "prenorm": false,
+    "window_seconds": 2.5
+  },
+  "n_train_records": 17418,
+  "n_val_records": 2183,
+  "numerics": {
+    "cauchy_backend": "pykeops",
+    "deterministic": true,
+    "tf32": false
+  },
+  "numpy": "2.4.6",
+  "python": "3.11.13",
+  "reduced_run": false,
+  "run": {
+    "arm": "A",
+    "block": 1,
+    "fs": 500,
+    "notch": true,
+    "run_id": "b1-fs500-A-n1-s3",
+    "seed": 3,
+    "selection": "macro_clean",
+    "source": "hr"
+  },
+  "scaler": {
+    "cache_stem": "ptbxl_hr_fs500_notch1",
+    "ddof": 0,
+    "fitted_for": "comparison",
+    "folds": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "fs": 500,
+    "mean": -0.0007768419640086214,
+    "n_records": 17418,
+    "n_values": 1045080000,
+    "notch": true,
+    "numpy_version": "2.4.6",
+    "path": "scaler_fs500_notch1.json",
+    "record_fingerprint": "bcb5585a7becf4ea",
+    "source": "hr",
+    "std": 0.23694575892112618,
+    "window": "full_record"
+  },
+  "tf32_matmul": false,
+  "torch": "2.13.0+cu130",
+  "train": {
+    "batch_size": 64,
+    "epochs": 100,
+    "lr": 0.001,
+    "num_workers": 8,
+    "weight_decay": 0.001
+  }
+}
