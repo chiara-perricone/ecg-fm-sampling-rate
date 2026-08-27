@@ -25,8 +25,14 @@
 # constant rather than a local baseline — but it is not inert for the test
 # suite, so `pytest -q` decides it rather than assumption. Cheapest place to
 # find out is a scratch virtualenv on the laptop, where the answer is free.
-
--r requirements.txt
+#
+# This file pins torch and nothing else, and is installed **before**
+# requirements.txt rather than pulling it in with `-r`. The reason is measured
+# rather than theoretical: `uv`, unlike `pip`, considers only the first index
+# that publishes a given package, so a single file combining this index with the
+# PyPI pins fails to resolve — `certifi` exists on download.pytorch.org at a
+# version other than the one pinned, and resolution stops there. Two commands in
+# a fixed order behave identically under both tools; one command does not.
 
 --extra-index-url https://download.pytorch.org/whl/cu130
 torch==2.13.0+cu130

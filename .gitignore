@@ -35,3 +35,6 @@ data/
 # which is the one thing step 8 of the runbook exists to guarantee.
 !results/**/*.npz
 !results/*.npz
+
+# application material - must never reach a public repo
+altro materiale application/

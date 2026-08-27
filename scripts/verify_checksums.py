@@ -12,8 +12,11 @@ Run once after extraction. It takes a few minutes and prints a digest line to
 paste into the repo as a record that the local copy was verified.
 
 Usage:
-    python scripts/verify_checksums.py --data data/ptb-xl --sums data/SHA256SUMS.txt
-    python scripts/verify_checksums.py --data data/ptb-xl --sums data/SHA256SUMS.txt --quick
+    python scripts/verify_checksums.py --data data/ptb-xl --sums data/ptb-xl/SHA256SUMS.txt
+    python scripts/verify_checksums.py --data data/ptb-xl --sums data/ptb-xl/SHA256SUMS.txt --quick
+
+PhysioNet ships SHA256SUMS.txt inside the archive, so it lands next to
+records100/ and records500/ rather than one level up.
 """
 
 from __future__ import annotations

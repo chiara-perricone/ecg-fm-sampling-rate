@@ -23,16 +23,20 @@ be, because none of it needs a GPU and all of it can fail.
   checkpoints.
 
 ```bash
-pip install -r requirements-cpu.txt
+pip install -r requirements-cpu.txt     # torch only, from the PyTorch index
+pip install -r requirements.txt         # everything else, from PyPI
 pytest -q                      # expect: all green, no skips other than optional deps
 ```
 
-`requirements.txt` holds everything except torch and is not installed directly.
-The torch build is platform-specific — `requirements-cpu.txt` here,
-`requirements-cuda.txt` on the pod — because a `+cpu` or `+cu130` pin resolves
-only against `download.pytorch.org` and fails outright anywhere else. Both
-wrapper files pin the same torch version; if the pod forces that version to
-change, both change together.
+**The order is not cosmetic.** torch is pinned separately — `requirements-cpu.txt`
+here, `requirements-cuda.txt` on the pod — because a `+cpu` or `+cu130` label
+exists only on `download.pytorch.org` and fails to resolve anywhere else. The two
+files must be installed in that sequence rather than chained with `-r`, because
+`uv` considers only the first index that publishes a package and a combined file
+therefore fails on `certifi`; `pip` tolerates the combined form, so writing it
+that way hides a defect that only appears under the other tool. Both files pin
+the same torch version, and if the pod forces that version to change, both
+change together.
 
 ---
 
@@ -141,10 +145,25 @@ the comparison arms plus all of blocks 0, 3 and 4 — and 10 at each of 240, 250
 and 500 Hz.
 
 `t₂₄₀` and `t₂₅₀` are interpolated between the two measured endpoints rather than
-scaled from one of them. Cost grows with sequence length but not necessarily in
-proportion to it: at 250 samples a 4090 is nowhere near saturated, so the short
-end is dominated by per-step overhead and the linear rule overstates the cheap
-rates and understates the expensive one. Measuring both ends is what removes the
+scaled from one of them, because cost grows with sequence length but not in
+proportion to it. Measured on 2026-08-26, RTX 5090, batch 64, eight dataloader
+workers, fp32, deterministic algorithms forced, Cauchy kernel on pykeops:
+
+| fs | samples | s/epoch |
+|---|---|---|
+| 100 | 250 | 10.1 |
+| 500 | 1250 | 38.0 |
+
+Five times the sequence for 3.76 times the time. Two points separate the fixed
+cost from the variable one — 3.1 s per epoch of dataloading, validation and
+interpreter, plus 0.0279 s per sample of window — and interpolation then gives
+19.9 s at 240 Hz and 20.6 s at 250 Hz, for **26.9 GPU-hours over the 48 runs**.
+
+Scaling linearly from the cheap end instead would predict 50.5 s at 500 Hz and a
+total of 32.8 hours: **22% too high**, because the fixed 3.1 s is charged five
+times over. The error is in the safe direction for a budget and the wrong one for
+choosing hardware, since it makes every rate look equally expensive and so makes
+a faster card look worth more than it is. Measuring both ends is what removes the
 assumption; that is why the probe is two epochs and not one.
 
 Those two epochs are not throwaway. They are epoch 0 of two real runs, and the

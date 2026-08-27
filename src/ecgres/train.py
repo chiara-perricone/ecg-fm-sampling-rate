@@ -428,7 +428,7 @@ def _write_manifest(
     device: torch.device,
     extra: dict | None,
 ) -> None:
-    """Come e' nato questo run. Con 43 run, uno di ignota provenienza e' perso."""
+    """Come e' nato questo run. Con 48 run, uno di ignota provenienza e' perso."""
     (out_dir / "manifest.json").write_text(
         json.dumps(
             {

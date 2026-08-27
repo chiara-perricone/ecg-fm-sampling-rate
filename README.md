@@ -69,15 +69,62 @@ I started this while preparing an application for a research position. The quest
 | Stage | State |
 | --- | --- |
 | Literature review | done — `RELATED_WORK.md`, findings verified against code and papers |
-| Protocol registered | done — `PROTOCOL.md`, 23 amendments, every one of them pre-run |
-| Data pipeline | done — PTB-XL v1.0.3 verified file-by-file against PhysioNet checksums |
+| Protocol registered | done — `PROTOCOL.md`, 26 amendments, every one of them pre-run |
+| Data pipeline | done — PTB-XL v1.0.3, 87,203 files verified against PhysioNet's checksums |
 | Model, training, evaluation | done — resume-equals-uninterrupted verified, not assumed |
 | Run matrix | committed before execution — `configs/runs.csv`, 48 runs |
 | Analysis code | written and tested against synthetic predictions, before any real one exists |
-| Training runs | not started |
+| Blocking reproduction (§3) | **accepted** — 0.9373 against a target of 0.941 |
+| Comparison runs (blocks 1–4) | in progress — 45 runs, 26.9 GPU-hours |
 
-**No results yet.** This table is updated as runs complete, including runs that
-do not support the hypothesis.
+**The blocking condition of §3 is met.** Three seeds at 100 Hz, macro AUROC over
+all 71 labels on fold 10: 0.9351, 0.9377, 0.9392, mean 0.9373. The 95% bootstrap
+interval over the 2,198 test records is [0.9299, 0.9438] and contains the 0.941
+the reference reports; the mean sits 0.0037 from it against a pre-registered
+tolerance of 0.010. `results/stage0.json` holds the numbers and
+`results/runs/b0-*` the per-record predictions behind them. The point estimate
+falls below the target rather than above it, which is worth stating plainly: the
+criterion is met because it was written before the number existed, not because
+the number came out flattering.
+
+One figure in that result matters beyond the gate. The standard deviation across
+the three seeds is **0.0020**, where Berger et al. report 0.01–0.03 for reseeding
+alone, and where Table 3 of the benchmark this work interrogates separates
+adjacent leaderboard positions by a median of 0.006. Whether the question asked
+here is answerable at all depends on that ratio, because reseeding noise is the
+denominator against which any effect of sampling rate has to be read. At this
+scale the design resolves differences the leaderboard treats as meaningful
+instead of drowning them. Two caveats, since the number is favourable: three
+seeds is a small sample, and the comparator of §8.2 is the five-seed equal-subset
+contrast of §10 entry 22, so this is an early reading rather than the figure the
+comparison will use.
+
+**Cost, measured rather than assumed.** One epoch at each end of the matrix, on
+an RTX 5090 at batch 64, fp32, deterministic algorithms forced, Cauchy kernel on
+pykeops: 10.1 s at 100 Hz (250 samples) and 38.0 s at 500 Hz (1,250 samples).
+Five times the sequence for 3.76 times the time, which separates a fixed 3.1 s
+per epoch from 0.0279 s per sample and puts all 48 runs at 26.9 GPU-hours.
+Scaling linearly from the cheap end would have claimed 32.8, because the fixed
+cost gets charged five times over. At the Community-tier price of the card that
+is roughly €17 for the whole matrix, which is the more interesting number: the
+question of how much of this leaderboard is sampling rate was answerable for the
+cost of a paperback.
+
+**Environment, stated because a claim depends on it.** Every run writes a
+`manifest.json` recording the GPU model, the torch and CUDA versions, Python,
+numpy, and the three numerical settings — TF32, cuDNN determinism, cuDNN
+benchmarking — so that no run in `results/` is of unknown provenance. That is
+more than housekeeping. Forcing deterministic algorithms makes two executions of
+one configuration agree on the *same* card, not across architectures, and §10
+entry 14 rests on precisely that agreement, so the card has to be on the record
+for the claim to be checkable. These runs are on one rented RTX 5090, driver
+CUDA 13.1, torch 2.13.0+cu130, Python 3.11. Training is the only step needing a
+GPU: `scripts/analyse.py` reads the per-record predictions and finishes on a
+laptop CPU in minutes, which is why those predictions are committed rather than
+left on a machine that no longer exists.
+
+This table is updated as runs complete, including runs that do not support the
+hypothesis.
 
 `RUNBOOK.md` gives the steps to reproduce all of it from nothing, in the order
 they have to happen, with what to check before each one.

@@ -10,7 +10,5 @@
 # than falling back, which on a metered machine is a failure at the first
 # command. The variant therefore lives here, with the index that serves it.
 
--r requirements.txt
-
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.13.0+cpu
