@@ -2,8 +2,6 @@
   "argv": [
     "--run-id",
     "b1-fs500-A-n1-s0",
-    "--epochs",
-    "1",
     "--deterministic",
     "--num-workers",
     "8"
@@ -14,7 +12,7 @@
   "cudnn_deterministic": true,
   "device": "cuda",
   "fingerprint": "36aa0944bf8a1109",
-  "git_sha": "bd6e312937df0e367e19d67973235551a74f73cb",
+  "git_sha": "1ecc53cf861ec3a10dc7531646a83db2e14895d9",
   "gpu": "NVIDIA GeForce RTX 5090",
   "model": {
     "arm": "A",
@@ -38,7 +36,7 @@
   },
   "numpy": "2.4.6",
   "python": "3.11.13",
-  "reduced_run": true,
+  "reduced_run": false,
   "run": {
     "arm": "A",
     "block": 1,
@@ -68,6 +66,7 @@
     "n_records": 17418,
     "n_values": 1045080000,
     "notch": true,
+    "numpy_version": "2.4.6",
     "path": "scaler_fs500_notch1.json",
     "record_fingerprint": "bcb5585a7becf4ea",
     "source": "hr",
@@ -78,7 +77,7 @@
   "torch": "2.13.0+cu130",
   "train": {
     "batch_size": 64,
-    "epochs": 1,
+    "epochs": 100,
     "lr": 0.001,
     "num_workers": 8,
     "weight_decay": 0.001
