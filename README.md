@@ -69,13 +69,13 @@ I started this while preparing an application for a research position. The quest
 | Stage | State |
 | --- | --- |
 | Literature review | done — `RELATED_WORK.md`, findings verified against code and papers |
-| Protocol registered | done — `PROTOCOL.md`, 26 amendments, every one of them pre-run |
+| Protocol registered | done — `PROTOCOL.md`, 27 amendments, 26 of them pre-run |
 | Data pipeline | done — PTB-XL v1.0.3, 87,203 files verified against PhysioNet's checksums |
-| Model, training, evaluation | done — resume-equals-uninterrupted verified, not assumed |
+| Model, training, evaluation | done — reproducibility check run, and it failed: see §10 entry 27 |
 | Run matrix | committed before execution — `configs/runs.csv`, 48 runs |
 | Analysis code | written and tested against synthetic predictions, before any real one exists |
 | Blocking reproduction (§3) | **accepted** — 0.9373 against a target of 0.941 |
-| Comparison runs (blocks 1–4) | in progress — 45 runs, 26.9 GPU-hours |
+| Comparison runs (blocks 1–4) | done — 45 runs, 26.9 GPU-hours |
 
 **The blocking condition of §3 is met.** Three seeds at 100 Hz, macro AUROC over
 all 71 labels on fold 10: 0.9351, 0.9377, 0.9392, mean 0.9373. The 95% bootstrap

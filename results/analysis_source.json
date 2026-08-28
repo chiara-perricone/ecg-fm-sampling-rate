@@ -1,0 +1,174 @@
+{
+  "analysis": "source",
+  "bootstrap_seed": 0,
+  "families": [
+    {
+      "endpoints": {
+        "macro_all": {
+          "delta": {
+            "ci": [
+              -0.0011011057533141188,
+              0.0015300204911307058
+            ],
+            "ci_simultaneous": [
+              -0.0011011057533141188,
+              0.0015300204911307058
+            ],
+            "comparator": "null_contrast",
+            "comparator_value": 0.0014988998186149516,
+            "crosses_zero": true,
+            "delta": 0.00013361633037733966,
+            "delta_abs": 0.00013361633037733966,
+            "delta_pair": [
+              "records500 ricampionato",
+              "records100"
+            ],
+            "gap_largest": 0.019,
+            "gap_typical": 0.006,
+            "max_seed_spread": 0.005820091522559023,
+            "max_seed_std": 0.0023415337816344137,
+            "null_contrast": 0.0014988998186149516,
+            "null_contrast_matched": 0.0009479874822472995,
+            "p_holm": 0.8939106089391061,
+            "verdict": "non rilevabile a questa scala"
+          },
+          "groups": [
+            {
+              "ci": [
+                0.9370888906921782,
+                0.949729998203337
+              ],
+              "name": "records500 ricampionato",
+              "per_run": {
+                "b3-fs100-A-n0-s0": 0.9425625504375943,
+                "b3-fs100-A-n0-s1": 0.9375892201538412,
+                "b3-fs100-A-n0-s2": 0.9380895063587592,
+                "b3-fs100-A-n0-s3": 0.9390343088948861,
+                "b3-fs100-A-n0-s4": 0.9386312088931925
+              },
+              "point": 0.9439994829083179,
+              "seed_spread": 0.00497333028375313,
+              "seed_std": 0.0019674725351785547
+            },
+            {
+              "ci": [
+                0.936832099252922,
+                0.9497600960126463
+              ],
+              "name": "records100",
+              "per_run": {
+                "b4-fs100-A-n0-s0": 0.9427614539524283,
+                "b4-fs100-A-n0-s1": 0.9369413624298693,
+                "b4-fs100-A-n0-s2": 0.9372422694170672,
+                "b4-fs100-A-n0-s3": 0.9383574715150147,
+                "b4-fs100-A-n0-s4": 0.939278055397448
+              },
+              "point": 0.9438658665779406,
+              "seed_spread": 0.005820091522559023,
+              "seed_std": 0.0023415337816344137
+            }
+          ],
+          "pairs": [
+            {
+              "a": "records500 ricampionato",
+              "b": "records100",
+              "crosses_zero": true,
+              "diff": 0.00013361633037733966,
+              "hi": 0.0015300204911307058,
+              "hi_simultaneous": 0.0015300204911307058,
+              "lo": -0.0011011057533141188,
+              "lo_simultaneous": -0.0011011057533141188,
+              "p_holm": 0.8939106089391061,
+              "p_raw": 0.8939106089391061,
+              "significant_holm": false
+            }
+          ]
+        },
+        "macro_clean": {
+          "delta": {
+            "ci": [
+              -0.0006149419609925988,
+              0.00029169204408565334
+            ],
+            "ci_simultaneous": [
+              -0.0006149419609925988,
+              0.00029169204408565334
+            ],
+            "comparator": "null_contrast",
+            "comparator_value": 0.0009475468513041041,
+            "crosses_zero": true,
+            "delta": -0.0001637483599239431,
+            "delta_abs": 0.0001637483599239431,
+            "delta_pair": [
+              "records500 ricampionato",
+              "records100"
+            ],
+            "gap_largest": 0.019,
+            "gap_typical": 0.006,
+            "max_seed_spread": 0.0031320131583141286,
+            "max_seed_std": 0.001193634397346014,
+            "null_contrast": 0.0009475468513041041,
+            "null_contrast_matched": 0.0005992812479683715,
+            "p_holm": 0.4557544245575442,
+            "verdict": "non rilevabile a questa scala"
+          },
+          "groups": [
+            {
+              "ci": [
+                0.9404488090331325,
+                0.9501013253272981
+              ],
+              "name": "records500 ricampionato",
+              "per_run": {
+                "b3-fs100-A-n0-s0": 0.9423238317525024,
+                "b3-fs100-A-n0-s1": 0.942776802126238,
+                "b3-fs100-A-n0-s2": 0.940930104596553,
+                "b3-fs100-A-n0-s3": 0.9417609883605421,
+                "b3-fs100-A-n0-s4": 0.942206102197705
+              },
+              "point": 0.945472051875589,
+              "seed_spread": 0.0018466975296850263,
+              "seed_std": 0.0006986716787321884
+            },
+            {
+              "ci": [
+                0.9405819225167829,
+                0.9502690466563336
+              ],
+              "name": "records100",
+              "per_run": {
+                "b4-fs100-A-n0-s0": 0.9441160819824531,
+                "b4-fs100-A-n0-s1": 0.9428082343929063,
+                "b4-fs100-A-n0-s2": 0.940984068824139,
+                "b4-fs100-A-n0-s3": 0.9416534068463948,
+                "b4-fs100-A-n0-s4": 0.9425692011170842
+              },
+              "point": 0.945635800235513,
+              "seed_spread": 0.0031320131583141286,
+              "seed_std": 0.001193634397346014
+            }
+          ],
+          "pairs": [
+            {
+              "a": "records500 ricampionato",
+              "b": "records100",
+              "crosses_zero": true,
+              "diff": -0.0001637483599239431,
+              "hi": 0.00029169204408565334,
+              "hi_simultaneous": 0.00029169204408565334,
+              "lo": -0.0006149419609925988,
+              "lo_simultaneous": -0.0006149419609925988,
+              "p_holm": 0.4557544245575442,
+              "p_raw": 0.4557544245575442,
+              "significant_holm": false
+            }
+          ]
+        }
+      },
+      "title": "\u00a78.3.2 \u2014 provenienza del segnale a 100 Hz"
+    }
+  ],
+  "git_sha": "b6e181dc1d821658c18663995ad773eaaba4f394",
+  "n_boot": 10000,
+  "primary_endpoint": "macro_clean"
+}

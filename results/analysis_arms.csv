@@ -1,0 +1,7 @@
+analysis,family,endpoint,a,b,diff,lo,hi,p_raw,p_holm,lo_simultaneous,hi_simultaneous
+arms,§8.3.1 — Arm A contro Arm B a 240 Hz,macro_clean,A,B,0.000164,-0.000773,0.001080,0.729127,0.729127,-0.000773,0.001080
+arms,§8.3.1 — Arm A contro Arm B a 240 Hz,macro_all,A,B,-0.000406,-0.002121,0.001027,0.565343,0.565343,-0.002121,0.001027
+arms,§8.3.1 — Arm A contro Arm B a 250 Hz,macro_clean,A,B,0.000488,-0.000425,0.001389,0.300970,0.300970,-0.000425,0.001389
+arms,§8.3.1 — Arm A contro Arm B a 250 Hz,macro_all,A,B,-0.002078,-0.004930,0.000385,0.100390,0.100390,-0.004930,0.000385
+arms,§8.3.1 — Arm A contro Arm B a 500 Hz,macro_clean,A,B,0.001425,0.000227,0.002609,0.016598,0.016598,0.000227,0.002609
+arms,§8.3.1 — Arm A contro Arm B a 500 Hz,macro_all,A,B,0.000675,-0.002039,0.002738,0.668133,0.668133,-0.002039,0.002738

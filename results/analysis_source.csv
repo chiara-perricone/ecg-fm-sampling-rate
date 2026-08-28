@@ -1,0 +1,3 @@
+analysis,family,endpoint,a,b,diff,lo,hi,p_raw,p_holm,lo_simultaneous,hi_simultaneous
+source,§8.3.2 — provenienza del segnale a 100 Hz,macro_clean,records500 ricampionato,records100,-0.000164,-0.000615,0.000292,0.455754,0.455754,-0.000615,0.000292
+source,§8.3.2 — provenienza del segnale a 100 Hz,macro_all,records500 ricampionato,records100,0.000134,-0.001101,0.001530,0.893911,0.893911,-0.001101,0.001530
