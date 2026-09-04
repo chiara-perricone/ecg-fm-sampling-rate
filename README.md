@@ -30,8 +30,9 @@ isolate what drives performance differences. Rate is not on that list.
 
 The margins involved are small. On PTB-XL (all) under fine-tuning, the reported
 macro AUROC runs from 0.949 for ECG-CPC down to 0.889 for ECGFM-KED — a total
-spread of 0.060, with adjacent positions frequently separated by 0.005 to 0.010.
-A preprocessing choice does not need a large effect to reorder that.
+spread of 0.060, with adjacent positions separated by a median of 0.006 and by
+0.019 at the widest. A preprocessing choice does not need a large effect to
+reorder that.
 
 ## The question
 
@@ -41,6 +42,75 @@ changes?
 
 **Q2.** Is that movement small or large relative to the gaps the leaderboard
 treats as differences between models?
+
+## The answer
+
+**One architecture, not the leaderboard.** What follows measures S4, the supervised
+state-space baseline of the benchmark, trained from scratch at each rate. That is what makes
+the experiment possible at all: the eight foundation models are pretrained at a fixed rate
+and cannot be moved off it without pretraining again, so only the two from-scratch baselines
+are eligible. Of those two, S4 is the harder test, because it is the one that *claims* not to
+care — parameterised in continuous time with a learned step size, it is the architecture
+least exposed to one of the two ways a rate change can bite. A transformer or a CNN, whose
+receptive field is fixed in samples, is not in the same position. What that means for how far
+the numbers travel is set out below, and at length in
+[about-this-repository.md](about-this-repository.md) §6, §7 and §13.
+
+All 48 runs are complete: 3 for the blocking reproduction of §3, 45 for the
+comparison. Every estimate below is a paired bootstrap over 10,000 resamples,
+five seeds per cell, Holm-corrected across the family of comparisons.
+
+The endpoint is `macro_clean`: the macro AUROC over the 49 diagnostic labels
+with at least ten positive cases in fold 10, a set computed once, frozen and
+committed before any model was trained. `macro_all` averages all 71, of which 22
+fall below that threshold and two carry a single positive; it stays the endpoint
+for the §3 reproduction, because the published 0.941 is defined on the full
+label set. Both are computed every epoch of every run and reported side by side.
+See §10 entry 1.
+
+**Q1 — at most 0.0015.** Ensemble AUROC by rate: 100 → 0.9456, 240 → 0.9454,
+250 → 0.9458, 500 → 0.9469. No pair separates by more than that, in either
+direction.
+
+| comparison | Δ | 95% CI | p_holm |
+|---|---|---|---|
+| 100 − 240 | +0.0001 | [−0.0009, +0.0011] | 1.000 |
+| 100 − 250 | −0.0002 | [−0.0012, +0.0007] | 1.000 |
+| 100 − 500 | −0.0014 | [−0.0026, −0.0001] | 0.147 |
+| 240 − 250 | −0.0004 | [−0.0011, +0.0003] | 0.977 |
+| 240 − 500 | −0.0015 | [−0.0026, −0.0004] | 0.049 |
+| 250 − 500 | −0.0011 | [−0.0022, −0.0001] | 0.147 |
+
+**Q2 — small.** The pre-registered relevance threshold is 0.006, the median gap
+between adjacent leaderboard positions. The uncontrolled factor is worth about a
+quarter of the smallest difference that ranking treats as real.
+
+**The negative control holds.** 240 Hz and 250 Hz differ by 4% in rate and by
+nothing physiological, so a real difference between them would mean the pipeline
+is measuring something other than what it claims to. That contrast is null,
+which is what licenses reading the rest of the table. It is looked at first, as
+the protocol requires.
+
+**How far this travels.** A change of rate acts through two channels. One is the
+diagnostic information the signal still carries, which every model in the
+benchmark faces alike. The other is the relation between an architecture's
+receptive field and physical time, which S4 largely absorbs because its step size
+is learned rather than fixed in samples. The table above bounds the first
+channel, and that bound transfers to the whole leaderboard. The second is
+measured here only inside S4, through a pre-registered contrast on the time-scale
+prior — which came out with the sign opposite to the hypothesis. Architectures
+whose temporal extent is defined in samples remain exposed to it, and nothing
+here settles their case.
+
+The result is null, and §9 of the protocol commits to reporting it with the same
+prominence as a positive one.
+
+The rest — the time-scale prior contrast, the notch and source controls, the
+reproducibility check that did not pass, and why the verdict is read off effect
+size rather than significance — is in
+[about-this-repository.md](about-this-repository.md), with the specifications in
+[PROTOCOL.md](PROTOCOL.md) §8 and §10 and the full output in
+`results/analysis_{rates,arms,notch,source}.{json,csv}`.
 
 ## What this is not
 
@@ -53,6 +123,9 @@ readers of a leaderboard can judge which gaps are large enough to survive it.
 The protocol is registered in [PROTOCOL.md](PROTOCOL.md) before any model is
 trained. The literature review that produced this design is in
 [RELATED_WORK.md](RELATED_WORK.md), and it comes first this time.
+[about-this-repository.md](about-this-repository.md) is the long form: the
+reasoning behind each design choice, the full results, and what they do not
+settle.
 
 ## Why this exists
 
@@ -76,6 +149,7 @@ I started this while preparing an application for a research position. The quest
 | Analysis code | written and tested against synthetic predictions, before any real one exists |
 | Blocking reproduction (§3) | **accepted** — 0.9373 against a target of 0.941 |
 | Comparison runs (blocks 1–4) | done — 45 runs, 26.9 GPU-hours |
+| Pre-registered analysis (§8) | done — four contrasts at 10,000 resamples, reported above |
 
 **The blocking condition of §3 is met.** Three seeds at 100 Hz, macro AUROC over
 all 71 labels on fold 10: 0.9351, 0.9377, 0.9392, mean 0.9373. The 95% bootstrap
@@ -122,9 +196,6 @@ CUDA 13.1, torch 2.13.0+cu130, Python 3.11. Training is the only step needing a
 GPU: `scripts/analyse.py` reads the per-record predictions and finishes on a
 laptop CPU in minutes, which is why those predictions are committed rather than
 left on a machine that no longer exists.
-
-This table is updated as runs complete, including runs that do not support the
-hypothesis.
 
 `RUNBOOK.md` gives the steps to reproduce all of it from nothing, in the order
 they have to happen, with what to check before each one.
